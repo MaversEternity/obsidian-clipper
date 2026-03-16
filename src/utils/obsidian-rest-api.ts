@@ -138,6 +138,33 @@ export async function deleteNote(
 	}
 }
 
+// List all note files in vault
+export async function fetchVaultNotes(
+	config?: ObsidianRESTConfig
+): Promise<{ notes: string[]; error?: string }> {
+	const cfg = config || await getRESTConfig();
+
+	if (!cfg.apiKey) {
+		return { notes: [], error: 'Obsidian REST API key not configured.' };
+	}
+
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: 'listObsidianNotes',
+			host: cfg.host,
+			apiKey: cfg.apiKey,
+		}) as { notes?: string[]; error?: string };
+
+		if (response && response.error) {
+			return { notes: [], error: response.error };
+		}
+
+		return { notes: response?.notes || [] };
+	} catch (error) {
+		return { notes: [], error: `Failed to list notes: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 // List top-level vault directories
 export async function fetchVaultDirectories(
 	config?: ObsidianRESTConfig

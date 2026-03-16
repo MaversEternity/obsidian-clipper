@@ -26,6 +26,7 @@ import { formatPropertyValue } from '../utils/shared';
 import { updateNoteContent, fetchVaultDirectories, deleteNote } from '../utils/obsidian-rest-api';
 import '../components/multitext-input';
 import { MultitextInput } from '../components/multitext-input';
+import '../components/note-link-suggest';
 
 interface ReaderModeResponse {
 	success: boolean;

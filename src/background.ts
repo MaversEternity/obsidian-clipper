@@ -577,6 +577,45 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
+		// Obsidian REST API proxy — list vault note files (recursive)
+		if (typedRequest.action === "listObsidianNotes") {
+			const { host, apiKey } = typedRequest as any;
+			const headers = {
+				'Authorization': `Bearer ${apiKey}`,
+				'Accept': 'application/json',
+			};
+
+			async function listDir(path: string): Promise<string[]> {
+				const url = `${host}/vault/${path}`;
+				const resp = await fetch(url, { headers });
+				if (!resp.ok) return [];
+				const data = await resp.json();
+				if (!data.files || !Array.isArray(data.files)) return [];
+
+				const notes: string[] = [];
+				const subdirs: string[] = [];
+				for (const file of data.files) {
+					const fullPath = path + file;
+					if (file.endsWith('.md')) {
+						notes.push(fullPath);
+					} else if (file.endsWith('/')) {
+						subdirs.push(fullPath);
+					}
+				}
+				const subResults = await Promise.all(subdirs.map(d => listDir(d)));
+				return notes.concat(...subResults);
+			}
+
+			listDir('')
+				.then(notes => {
+					sendResponse({ notes: notes.sort() });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to list notes: ${error instanceof Error ? error.message : String(error)}` });
+				});
+			return true;
+		}
+
 		// Obsidian REST API proxy — list vault directories
 		if (typedRequest.action === "listObsidianDirectories") {
 			const { host, apiKey } = typedRequest as any;
