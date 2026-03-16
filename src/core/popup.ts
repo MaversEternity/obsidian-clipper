@@ -37,6 +37,7 @@ let currentVariables: { [key: string]: string } = {};
 let currentTabId: number | undefined;
 let lastSelectedVault: string | null = null;
 let isNotePreviewMode = false;
+let notePreviewData: { noteName: string; noteContent: string; notePath: string } | null = null;
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
@@ -272,6 +273,8 @@ function setupMessageListeners() {
 }
 
 function applyNotePreview(noteName: string, noteContent: string, notePath: string) {
+	notePreviewData = { noteName, noteContent, notePath };
+
 	// Parse frontmatter and body
 	const { frontmatter, body } = parseFrontmatter(noteContent);
 
@@ -291,51 +294,19 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 		pathField.value = notePath;
 	}
 
-	// Render frontmatter as properties
+	// Overwrite existing property inputs with frontmatter values
 	if (Object.keys(frontmatter).length > 0) {
-		const existingProperties = document.querySelector('.metadata-properties') as HTMLElement;
-		const newProperties = createElementWithClass('div', 'metadata-properties');
-
 		for (const [key, value] of Object.entries(frontmatter)) {
-			const propertyDiv = createElementWithClass('div', 'metadata-property');
-			const propertyType = generalSettings.propertyTypes.find(p => p.name === key)?.type || 'text';
-
-			const metadataPropertyKey = document.createElement('div');
-			metadataPropertyKey.className = 'metadata-property-key';
-
-			const propertyIconSpan = document.createElement('span');
-			propertyIconSpan.className = 'metadata-property-icon';
-			const iconElement = document.createElement('i');
-			iconElement.setAttribute('data-lucide', getPropertyTypeIcon(propertyType));
-			propertyIconSpan.appendChild(iconElement);
-
-			const propertyLabel = document.createElement('label');
-			propertyLabel.setAttribute('for', key);
-			propertyLabel.textContent = key;
-
-			metadataPropertyKey.appendChild(propertyIconSpan);
-			metadataPropertyKey.appendChild(propertyLabel);
-
-			const metadataPropertyValue = document.createElement('div');
-			metadataPropertyValue.className = 'metadata-property-value';
-
-			const inputElement = document.createElement('input');
-			inputElement.id = key;
-			inputElement.setAttribute('data-type', propertyType);
-			inputElement.type = 'text';
-			inputElement.value = Array.isArray(value) ? value.join(', ') : String(value);
-			inputElement.setAttribute('data-id', Date.now().toString() + Math.random().toString(36).slice(2, 11));
-
-			metadataPropertyValue.appendChild(inputElement);
-			propertyDiv.appendChild(metadataPropertyKey);
-			propertyDiv.appendChild(metadataPropertyValue);
-			newProperties.appendChild(propertyDiv);
+			const inputElement = document.getElementById(key) as HTMLInputElement;
+			if (inputElement) {
+				const propertyType = inputElement.getAttribute('data-type') || 'text';
+				if (propertyType === 'checkbox') {
+					inputElement.checked = value === true || value === 'true';
+				} else {
+					inputElement.value = Array.isArray(value) ? value.join(', ') : String(value);
+				}
+			}
 		}
-
-		if (existingProperties && existingProperties.parentNode) {
-			existingProperties.parentNode.replaceChild(newProperties, existingProperties);
-		}
-		initializeIcons(newProperties);
 	}
 
 	// Switch to note preview mode — change main button to "Update"
@@ -544,8 +515,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 				const pendingData = await browser.storage.local.get('pendingNotePreview') as Record<string, any>;
 				if (pendingData.pendingNotePreview) {
 					const { noteName, noteContent, notePath } = pendingData.pendingNotePreview as { noteName: string; noteContent: string; notePath: string };
-					applyNotePreview(noteName, noteContent, notePath);
 					await browser.storage.local.remove('pendingNotePreview');
+
+					// Auto-select template based on source URL from note frontmatter
+					const { frontmatter } = parseFrontmatter(noteContent);
+					const sourceUrl = frontmatter.source || frontmatter.url || '';
+					if (sourceUrl && templates.length > 0) {
+						const matchedTemplate = await findMatchingTemplate(sourceUrl, async () => null);
+						if (matchedTemplate) {
+							currentTemplate = matchedTemplate;
+							updateTemplateDropdown();
+						}
+					}
+
+					// Set note preview state before refreshFields — it will re-apply after filling template values
+					isNotePreviewMode = true;
+					notePreviewData = { noteName, noteContent, notePath };
+					await refreshFields(currentTabId, false);
 				} else {
 					// Normal content load
 					await refreshFields(currentTabId);
@@ -805,7 +791,6 @@ async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void
 }
 
 async function refreshFields(tabId: number, checkTemplateTriggers: boolean = true) {
-	if (isNotePreviewMode) return;
 	if (templates.length === 0) {
 		console.warn('No templates available');
 		showError('noTemplates');
@@ -877,6 +862,11 @@ async function refreshFields(tabId: number, checkTemplateTriggers: boolean = tru
 					initializedContent.currentVariables,
 					extractedData.schemaOrgData
 				);
+
+				// Re-apply note preview data over template values
+				if (isNotePreviewMode && notePreviewData) {
+					applyNotePreview(notePreviewData.noteName, notePreviewData.noteContent, notePreviewData.notePath);
+				}
 
 				// Update variables panel if it's open
 				updateVariablesPanel(currentTemplate, currentVariables);
