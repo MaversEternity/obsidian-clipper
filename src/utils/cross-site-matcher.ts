@@ -172,7 +172,32 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 		}
 	}
 
-	return Array.from(positionMap.values());
+	// Merge smaller matches into larger ones that fully contain them
+	const matches = Array.from(positionMap.values());
+	matches.sort((a, b) => a.startOffset - b.startOffset || b.endOffset - a.endOffset);
+
+	const filtered: CrossSiteMatch[] = [];
+	for (const match of matches) {
+		const container = filtered.find(existing =>
+			existing.element === match.element &&
+			existing.startOffset <= match.startOffset &&
+			existing.endOffset >= match.endOffset
+		);
+		if (container) {
+			// Merge the smaller match's entries into the larger one
+			const existingIds = new Set(container.entries.map(e => e.highlightId));
+			for (const entry of match.entries) {
+				if (!existingIds.has(entry.highlightId)) {
+					container.entries.push(entry);
+					existingIds.add(entry.highlightId);
+				}
+			}
+		} else {
+			filtered.push(match);
+		}
+	}
+
+	return filtered;
 }
 
 // Find the nearest block-level parent element
