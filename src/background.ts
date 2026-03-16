@@ -56,6 +56,11 @@ async function disableYouTubeEmbedRule(): Promise<void> {
 	});
 }
 
+// Ensure clicking the extension icon opens the popup, not the side panel
+if (typeof chrome !== 'undefined' && chrome.sidePanel?.setPanelBehavior) {
+	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+}
+
 let sidePanelOpenWindows: Set<number> = new Set();
 let highlighterModeState: { [tabId: number]: boolean } = {};
 let hasHighlights = false;

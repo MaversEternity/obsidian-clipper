@@ -317,13 +317,22 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 		noteContentField.value = body;
 	}
 
+	// Update path field and active context to match the note's location
 	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	if (pathField && notePath) {
-		pathField.value = notePath;
+	if (pathField) {
+		pathField.value = notePath || '';
 	}
-
-	// Sync context dropdown with note path
-	syncContextToPath(notePath);
+	setLocalStorage('activeContext', notePath || '');
+	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
+	if (contextSelect) {
+		if (notePath && !Array.from(contextSelect.options).some(o => o.value === notePath)) {
+			const option = document.createElement('option');
+			option.value = notePath;
+			option.textContent = notePath;
+			contextSelect.insertBefore(option, contextSelect.lastElementChild);
+		}
+		contextSelect.value = notePath || '';
+	}
 
 	// Overwrite existing property inputs with frontmatter values
 	if (Object.keys(frontmatter).length > 0) {
@@ -362,13 +371,13 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 async function handleUpdateNote(): Promise<void> {
 	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 	const mainButton = document.getElementById('clip-btn');
 
 	if (!noteNameField || !noteContentField) return;
 
 	const noteName = noteNameField.value.trim();
-	const path = pathField?.value.trim() || '';
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+	const path = pathField?.value.trim() || ((await getLocalStorage('activeContext')) as string) || '';
 	const notePath = path ? `${path}/${noteName}.md` : `${noteName}.md`;
 
 	// Rebuild full content: frontmatter from properties + body
@@ -659,14 +668,6 @@ function setupEventListeners(tabId: number) {
 		});
 	}
 
-	// Sync path field changes back to context dropdown
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	if (pathField) {
-		pathField.addEventListener('input', () => {
-			syncContextToPath(pathField.value.trim());
-		});
-	}
-
 	const highlighterModeButton = document.getElementById('highlighter-mode');
 	if (highlighterModeButton) {
 		highlighterModeButton.addEventListener('click', () => toggleHighlighterMode(tabId));
@@ -733,7 +734,7 @@ function setupEventListeners(tabId: number) {
 				Promise.all([
 					generateFrontmatter(properties),
 					Promise.resolve(noteContentField.value)
-				]).then(([frontmatter, noteContent]) => {
+				]).then(async ([frontmatter, noteContent]) => {
 					const fileContent = frontmatter + noteContent;
 					
 					// Call share directly from the click handler
@@ -754,9 +755,9 @@ function setupEventListeners(tabId: number) {
 						};
 
 						if (navigator.canShare(shareData)) {
-							const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 							const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-							const path = pathField?.value || '';
+							const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+							const path = pathField?.value || ((await getLocalStorage('activeContext')) as string) || '';
 							const vault = vaultDropdown?.value || '';
 
 							navigator.share(shareData)
@@ -1009,7 +1010,6 @@ async function initializeContextDropdown() {
 	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
 	if (!contextSelect) return;
 
-	// Load directories from Obsidian
 	const result = await fetchVaultDirectories();
 	if (result.directories.length > 0) {
 		for (const dir of result.directories) {
@@ -1020,17 +1020,17 @@ async function initializeContextDropdown() {
 		}
 	}
 
-	// Add "New context..." option
 	const newOption = document.createElement('option');
 	newOption.value = '__new__';
 	newOption.textContent = '+ New context...';
 	contextSelect.appendChild(newOption);
 
-	// Restore saved context
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+
 	const saved = await getLocalStorage('activeContext');
 	if (saved && typeof saved === 'string') {
 		contextSelect.value = saved;
-		applyContext(saved);
+		if (pathField) pathField.value = saved;
 	}
 
 	contextSelect.addEventListener('change', async () => {
@@ -1039,58 +1039,24 @@ async function initializeContextDropdown() {
 			const name = prompt('New context name (creates a directory in your vault):');
 			if (name && name.trim()) {
 				const trimmed = name.trim();
-				// Create directory in Obsidian by writing a visible placeholder note
 				const placeholder = `${trimmed}/${trimmed}.md`;
 				await updateNoteContent(placeholder, `# ${trimmed}\n`);
-				// Add option and select it
 				const option = document.createElement('option');
 				option.value = trimmed;
 				option.textContent = trimmed;
 				contextSelect.insertBefore(option, contextSelect.lastElementChild);
 				contextSelect.value = trimmed;
 				await setLocalStorage('activeContext', trimmed);
-				applyContext(trimmed);
+				if (pathField) pathField.value = trimmed;
 			} else {
-				// Revert to previous
 				const prev = await getLocalStorage('activeContext');
 				contextSelect.value = (prev as string) || '';
 			}
 		} else {
 			await setLocalStorage('activeContext', value);
-			applyContext(value);
+			if (pathField) pathField.value = value;
 		}
 	});
-}
-
-function applyContext(context: string) {
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	if (pathField && context) {
-		pathField.value = context;
-	}
-}
-
-function syncContextToPath(path: string) {
-	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
-	if (!contextSelect) return;
-
-	if (!path) {
-		contextSelect.value = '';
-		setLocalStorage('activeContext', '');
-		return;
-	}
-
-	const options = Array.from(contextSelect.options).map(o => o.value);
-	if (options.includes(path)) {
-		contextSelect.value = path;
-	} else {
-		// Add as new option
-		const option = document.createElement('option');
-		option.value = path;
-		option.textContent = path;
-		contextSelect.insertBefore(option, contextSelect.lastElementChild);
-		contextSelect.value = path;
-	}
-	setLocalStorage('activeContext', path);
 }
 
 function buildTemplateFieldsSkeleton(template: Template | null) {
@@ -1174,13 +1140,13 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 
 	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 	const pathContainer = document.querySelector('.vault-path-container') as HTMLElement;
-	if (pathField && pathContainer) {
+	if (pathContainer) {
 		const isDailyNote = template.behavior === 'append-daily' || template.behavior === 'prepend-daily';
 		if (isDailyNote) {
-			pathField.style.display = 'none';
+			pathContainer.style.display = 'none';
 		} else {
 			pathContainer.style.display = 'flex';
-			pathField.setAttribute('data-template-value', template.path);
+			if (pathField) pathField.setAttribute('data-template-value', template.path);
 		}
 	}
 
@@ -1517,9 +1483,9 @@ export async function copyToClipboard(content: string) {
 		
 		const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 		const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-		const path = pathField?.value || '';
+		const path = pathField?.value || ((await getLocalStorage('activeContext')) as string) || '';
 		const vault = vaultDropdown?.value || '';
-		
+
 		const tabInfo = await getCurrentTabInfo();
 		await incrementStat('copyToClipboard', vault, path, tabInfo.url, tabInfo.title);
 
@@ -1545,9 +1511,9 @@ async function handleSaveToDownloads() {
 		const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
 		const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 		const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-		
+
 		let fileName = noteNameField?.value || 'untitled';
-		const path = pathField?.value || '';
+		const path = pathField?.value || ((await getLocalStorage('activeContext')) as string) || '';
 		const vault = vaultDropdown?.value || '';
 		
 		const properties = getPropertiesFromDOM();
@@ -1655,7 +1621,7 @@ async function handleClipObsidian(): Promise<void> {
 		const selectedVault = currentTemplate.vault || vaultDropdown.value;
 		const isDailyNote = currentTemplate.behavior === 'append-daily' || currentTemplate.behavior === 'prepend-daily';
 		const noteName = isDailyNote ? '' : noteNameField?.value || '';
-		const path = isDailyNote ? '' : pathField?.value || '';
+		const path = isDailyNote ? '' : pathField?.value || ((await getLocalStorage('activeContext')) as string) || '';
 
 		await saveToObsidian(fileContent, noteName, path, selectedVault, currentTemplate.behavior);
 		const tabInfo = await getCurrentTabInfo();
