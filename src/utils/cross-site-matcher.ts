@@ -2,7 +2,7 @@ import { fetchAllTaggedNotes } from './obsidian-rest-api';
 import { TagIndexEntry } from './highlight-tag-index';
 
 export interface CrossSiteMatch {
-	entry: TagIndexEntry;
+	entries: TagIndexEntry[];
 	element: Element;
 	startOffset: number;
 	endOffset: number;
@@ -104,7 +104,8 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 	const fullText = textNodes.map(tn => tn.text).join('');
 	const normalizedFull = fullText.replace(/\s+/g, ' ').trim().toLowerCase();
 
-	const matches: CrossSiteMatch[] = [];
+	// Collect raw matches grouped by position key
+	const positionMap = new Map<string, { entries: TagIndexEntry[]; element: Element; startOffset: number; endOffset: number }>();
 
 	// For each Obsidian tag, find word-boundary matches in page text
 	for (const [tag, notes] of tagMap) {
@@ -139,13 +140,24 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 					const localMatch = localRegex.exec(elementNormalized);
 
 					if (localMatch) {
-						for (const note of notes) {
-							matches.push({
-								entry: noteToTagIndexEntry(note, tag),
+						const posKey = `${localMatch.index}-${localMatch.index + localMatch[0].length}`;
+						if (!positionMap.has(posKey)) {
+							positionMap.set(posKey, {
+								entries: [],
 								element,
 								startOffset: localMatch.index,
 								endOffset: localMatch.index + localMatch[0].length,
 							});
+						}
+						const group = positionMap.get(posKey)!;
+						// Add all notes for this tag, deduplicating by filename
+						const existingIds = new Set(group.entries.map(e => e.highlightId));
+						for (const note of notes) {
+							const entry = noteToTagIndexEntry(note, tag);
+							if (!existingIds.has(entry.highlightId)) {
+								group.entries.push(entry);
+								existingIds.add(entry.highlightId);
+							}
 						}
 					}
 				}
@@ -153,14 +165,7 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 		}
 	}
 
-	// Deduplicate
-	const seen = new Set<string>();
-	return matches.filter(m => {
-		const key = `${m.entry.highlightId}-${m.startOffset}-${m.endOffset}`;
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
+	return Array.from(positionMap.values());
 }
 
 // Find the nearest block-level parent element

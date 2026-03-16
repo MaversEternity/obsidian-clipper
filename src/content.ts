@@ -493,18 +493,18 @@ declare global {
 							const rects = range.getClientRects();
 							for (const rect of Array.from(rects)) {
 								if (rect.width > 0 && rect.height > 0) {
-									createCrossSiteOverlay(rect, match.entry);
+									createCrossSiteOverlay(rect, match.entries);
 								}
 							}
 						} else {
 							// Fallback: use element bounding rect
 							const rect = match.element.getBoundingClientRect();
-							createCrossSiteOverlay(rect, match.entry);
+							createCrossSiteOverlay(rect, match.entries);
 						}
 					} catch (e) {
 						// Fallback: use element bounding rect
 						const rect = match.element.getBoundingClientRect();
-						createCrossSiteOverlay(rect, match.entry);
+						createCrossSiteOverlay(rect, match.entries);
 					} finally {
 						range.detach();
 					}

@@ -534,7 +534,7 @@ function closeContextMenu() {
 }
 
 // Handle click on a cross-site match overlay
-function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
+function handleCrossSiteOverlayClick(event: Event, entries: TagIndexEntry[]) {
 	event.stopPropagation();
 	event.preventDefault();
 
@@ -546,50 +546,57 @@ function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
 	const menu = document.createElement('div');
 	menu.className = 'obsidian-highlight-context-menu';
 
-	// Tags display
-	if (entry.tags.length > 0) {
-		const tagsRow = document.createElement('div');
-		tagsRow.className = 'context-menu-tags';
-		tagsRow.textContent = entry.tags.map(t => `#${t}`).join(' ');
-		menu.appendChild(tagsRow);
-	}
+	for (const entry of entries) {
+		const noteSection = document.createElement('div');
+		noteSection.className = 'context-menu-note-section';
 
-	// Source URL or note path
-	if (entry.sourceUrl) {
-		const sourceRow = document.createElement('div');
-		sourceRow.className = 'context-menu-source';
-		sourceRow.textContent = `From: ${new URL(entry.sourceUrl).hostname}`;
-		menu.appendChild(sourceRow);
-	} else if (entry.noteRef) {
-		const sourceRow = document.createElement('div');
-		sourceRow.className = 'context-menu-source';
-		sourceRow.textContent = entry.noteRef.name;
-		menu.appendChild(sourceRow);
-	}
+		// Tags display
+		if (entry.tags.length > 0) {
+			const tagsRow = document.createElement('div');
+			tagsRow.className = 'context-menu-tags';
+			tagsRow.textContent = entry.tags.map(t => `#${t}`).join(' ');
+			noteSection.appendChild(tagsRow);
+		}
 
-	// View Note button (if noteRef exists)
-	if (entry.noteRef) {
-		const viewNoteBtn = document.createElement('button');
-		viewNoteBtn.className = 'context-menu-btn';
-		viewNoteBtn.textContent = 'View in Clipper';
-		viewNoteBtn.addEventListener('click', async (e) => {
-			e.stopPropagation();
-			closeContextMenu();
-			await openNoteInClipper(entry.noteRef!);
-		});
-		menu.appendChild(viewNoteBtn);
+		// Source URL or note path
+		if (entry.sourceUrl) {
+			const sourceRow = document.createElement('div');
+			sourceRow.className = 'context-menu-source';
+			sourceRow.textContent = `From: ${new URL(entry.sourceUrl).hostname}`;
+			noteSection.appendChild(sourceRow);
+		} else if (entry.noteRef) {
+			const sourceRow = document.createElement('div');
+			sourceRow.className = 'context-menu-source';
+			sourceRow.textContent = entry.noteRef.name;
+			noteSection.appendChild(sourceRow);
+		}
 
-		// Open in Obsidian button
-		const openBtn = document.createElement('button');
-		openBtn.className = 'context-menu-btn';
-		openBtn.textContent = 'Open in Obsidian';
-		openBtn.addEventListener('click', (e) => {
-			e.stopPropagation();
-			closeContextMenu();
-			const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(entry.noteRef!.vault)}&file=${encodeURIComponent(entry.noteRef!.path + entry.noteRef!.name)}`;
-			window.open(obsidianUrl);
-		});
-		menu.appendChild(openBtn);
+		// View Note button (if noteRef exists)
+		if (entry.noteRef) {
+			const viewNoteBtn = document.createElement('button');
+			viewNoteBtn.className = 'context-menu-btn';
+			viewNoteBtn.textContent = 'View in Clipper';
+			viewNoteBtn.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				closeContextMenu();
+				await openNoteInClipper(entry.noteRef!);
+			});
+			noteSection.appendChild(viewNoteBtn);
+
+			// Open in Obsidian button
+			const openBtn = document.createElement('button');
+			openBtn.className = 'context-menu-btn';
+			openBtn.textContent = 'Open in Obsidian';
+			openBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				closeContextMenu();
+				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(entry.noteRef!.vault)}&file=${encodeURIComponent(entry.noteRef!.path + entry.noteRef!.name)}`;
+				window.open(obsidianUrl);
+			});
+			noteSection.appendChild(openBtn);
+		}
+
+		menu.appendChild(noteSection);
 	}
 
 	positionContextMenu(menu, rect);
@@ -749,12 +756,13 @@ function positionContextMenu(menu: HTMLElement, anchorRect: DOMRect) {
 	menu.style.top = `${top}px`;
 }
 
-// Create a cross-site highlight overlay
-export function createCrossSiteOverlay(rect: DOMRect, entry: TagIndexEntry) {
+// Create a cross-site highlight overlay (supports multiple entries per position)
+export function createCrossSiteOverlay(rect: DOMRect, entries: TagIndexEntry | TagIndexEntry[]) {
+	const entryArray = Array.isArray(entries) ? entries : [entries];
 	const overlay = document.createElement('div');
 	overlay.className = 'obsidian-highlight-overlay obsidian-highlight-crosssite';
 	overlay.dataset.crossSite = 'true';
-	overlay.dataset.highlightId = entry.highlightId;
+	overlay.dataset.highlightId = entryArray[0].highlightId;
 
 	overlay.style.position = 'absolute';
 	overlay.style.left = `${rect.left + window.scrollX - 2}px`;
@@ -765,8 +773,8 @@ export function createCrossSiteOverlay(rect: DOMRect, entry: TagIndexEntry) {
 	overlay.style.pointerEvents = 'auto';
 	overlay.style.cursor = 'pointer';
 
-	overlay.addEventListener('click', (e) => handleCrossSiteOverlayClick(e, entry));
-	overlay.addEventListener('touchend', (e) => handleCrossSiteOverlayClick(e, entry));
+	overlay.addEventListener('click', (e) => handleCrossSiteOverlayClick(e, entryArray));
+	overlay.addEventListener('touchend', (e) => handleCrossSiteOverlayClick(e, entryArray));
 
 	document.body.appendChild(overlay);
 }
