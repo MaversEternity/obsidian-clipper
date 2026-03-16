@@ -7,7 +7,7 @@ import { extractContentBySelector as extractContentBySelectorShared } from './ut
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { findCrossSiteMatches } from './utils/cross-site-matcher';
-import { createCrossSiteOverlay, removeCrossSiteOverlays } from './utils/highlighter-overlays';
+import { createCrossSiteOverlay, removeCrossSiteOverlays, setContentPickerMode } from './utils/highlighter-overlays';
 
 declare global {
 	interface Window {
@@ -196,6 +196,12 @@ declare global {
 				removeContainer(existingContainer);
 			}
 			return;
+		}
+
+		if (request.action === "toggleContentPicker") {
+			toggleContentPicker(request.enabled);
+			sendResponse({ success: true });
+			return true;
 		}
 
 		if (request.action === "copy-text-to-clipboard") {
@@ -507,6 +513,12 @@ declare global {
 		} catch (e) {
 			console.warn('Cross-site highlight matching failed:', e);
 		}
+	}
+
+	// Content picker — reuses the highlighter's UI with picker mode
+	function toggleContentPicker(enabled: boolean) {
+		setContentPickerMode(enabled);
+		highlighter.toggleHighlighterMenu(enabled);
 	}
 
 	// Initialize highlighter

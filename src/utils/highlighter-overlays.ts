@@ -24,6 +24,15 @@ let touchStartX: number = 0;
 let touchStartY: number = 0;
 let isTouchMoved: boolean = false;
 let lastHoverTarget: Element | null = null;
+let contentPickerMode: boolean = false;
+
+export function setContentPickerMode(enabled: boolean) {
+	contentPickerMode = enabled;
+}
+
+export function isContentPickerActive(): boolean {
+	return contentPickerMode;
+}
 
 const LINE_BY_LINE_OVERLAY_TAGS = ['P'];
 
@@ -76,6 +85,25 @@ export function handleMouseUp(event: MouseEvent | TouchEvent) {
 	}
 
 	const selection = window.getSelection();
+
+	if (contentPickerMode) {
+		// In picker mode, send text to popup instead of highlighting
+		let text = '';
+		if (selection && !selection.isCollapsed) {
+			text = selection.toString().trim();
+			selection.removeAllRanges();
+		} else {
+			const block = target.closest('p, h1, h2, h3, h4, h5, h6, li, pre, blockquote, td, th, figcaption, table');
+			if (block) {
+				text = (block.textContent || '').trim();
+			}
+		}
+		if (text) {
+			browser.runtime.sendMessage({ action: 'contentPicked', text });
+		}
+		return;
+	}
+
 	if (selection && !selection.isCollapsed) {
 		handleTextSelection(selection);
 	} else {
@@ -91,8 +119,6 @@ export function handleMouseUp(event: MouseEvent | TouchEvent) {
 					// Clicked table cell/row not in a table, so do nothing.
 					return; 
 				}
-				// If a table is found, elementToProcess is now the table.
-				// highlightElement will verify if 'TABLE' is an allowed tag.
 			} else {
 				// Original target was not a table cell/row.
 				// isIgnoredElement returns true if element is NOT allowed.

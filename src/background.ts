@@ -549,6 +549,17 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
+		// Toggle content picker mode on the page
+		if (typedRequest.action === "toggleContentPicker") {
+			const { tabId, enabled } = typedRequest as any;
+			if (tabId) {
+				browser.tabs.sendMessage(tabId, { action: "toggleContentPicker", enabled })
+					.then(() => sendResponse({ success: true }))
+					.catch((error) => sendResponse({ success: false, error: String(error) }));
+				return true;
+			}
+		}
+
 		// Open embedded iframe for note preview
 		if (typedRequest.action === "openEmbeddedForNote") {
 			browser.tabs.query({ active: true, currentWindow: true }).then(async (tabs) => {

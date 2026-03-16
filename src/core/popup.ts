@@ -260,6 +260,13 @@ function setupMessageListeners() {
 		} else if (request.action === "showNotePreview") {
 			applyNotePreview(request.noteName, request.noteContent, request.notePath);
 			sendResponse({ success: true });
+		} else if (request.action === "contentPicked") {
+			const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+			if (noteContentField && request.text) {
+				const quote = `\n\n> ${request.text.replace(/\n/g, '\n> ')}`;
+				noteContentField.value += quote;
+			}
+			sendResponse({ success: true });
 		}
 	});
 }
@@ -479,6 +486,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 				initializeIcons(refreshButton);
 			});
 		}
+		const pickerButton = document.getElementById('content-picker');
+		if (pickerButton) {
+			pickerButton.addEventListener('click', async (e) => {
+				e.preventDefault();
+				const isActive = pickerButton.classList.toggle('active');
+				try {
+					await browser.runtime.sendMessage({
+						action: 'toggleContentPicker',
+						tabId: currentTabId,
+						enabled: isActive,
+					});
+				} catch (error) {
+					console.error('Error toggling content picker:', error);
+				}
+			});
+		}
+
 		const settingsButton = document.getElementById('open-settings');
 		if (settingsButton) {
 			settingsButton.addEventListener('click', async function() {
@@ -781,6 +805,7 @@ async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void
 }
 
 async function refreshFields(tabId: number, checkTemplateTriggers: boolean = true) {
+	if (isNotePreviewMode) return;
 	if (templates.length === 0) {
 		console.warn('No templates available');
 		showError('noTemplates');
