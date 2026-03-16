@@ -1048,6 +1048,7 @@ async function initializeContextDropdown() {
 				contextSelect.value = trimmed;
 				await setLocalStorage('activeContext', trimmed);
 				if (pathField) pathField.value = trimmed;
+				notifyContentScriptContextChanged();
 			} else {
 				const prev = await getLocalStorage('activeContext');
 				contextSelect.value = (prev as string) || '';
@@ -1055,8 +1056,14 @@ async function initializeContextDropdown() {
 		} else {
 			await setLocalStorage('activeContext', value);
 			if (pathField) pathField.value = value;
+			notifyContentScriptContextChanged();
 		}
 	});
+}
+
+function notifyContentScriptContextChanged() {
+	if (!currentTabId) return;
+	browser.tabs.sendMessage(currentTabId, { action: 'refreshCrossSiteMatches' }).catch(() => {});
 }
 
 function buildTemplateFieldsSkeleton(template: Template | null) {

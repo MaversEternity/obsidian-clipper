@@ -204,6 +204,11 @@ declare global {
 			return true;
 		}
 
+		if (request.action === "refreshCrossSiteMatches") {
+			refreshCrossSiteMatches().then(() => sendResponse({ success: true }));
+			return true;
+		}
+
 		if (request.action === "copy-text-to-clipboard") {
 			const textArea = document.createElement("textarea");
 			textArea.value = request.text;
@@ -456,58 +461,56 @@ declare global {
 		}
 
 		updateHasHighlights();
+		await refreshCrossSiteMatches();
+	}
 
-		// Scan for cross-site tagged highlight matches
+	async function refreshCrossSiteMatches() {
+		removeCrossSiteOverlays();
 		try {
 			const matches = await findCrossSiteMatches();
-			if (matches.length > 0) {
-				for (const match of matches) {
-					const range = document.createRange();
-					try {
-						// Try to create a range from the element text offsets
-						const treeWalker = document.createTreeWalker(match.element, NodeFilter.SHOW_TEXT);
-						let currentOffset = 0;
-						let startNode: Node | null = null;
-						let startNodeOffset = 0;
-						let endNode: Node | null = null;
-						let endNodeOffset = 0;
-						let textNode: Node | null;
+			for (const match of matches) {
+				const range = document.createRange();
+				try {
+					const treeWalker = document.createTreeWalker(match.element, NodeFilter.SHOW_TEXT);
+					let currentOffset = 0;
+					let startNode: Node | null = null;
+					let startNodeOffset = 0;
+					let endNode: Node | null = null;
+					let endNodeOffset = 0;
+					let textNode: Node | null;
 
-						while ((textNode = treeWalker.nextNode())) {
-							const len = (textNode.textContent || '').length;
-							if (!startNode && currentOffset + len > match.startOffset) {
-								startNode = textNode;
-								startNodeOffset = match.startOffset - currentOffset;
-							}
-							if (currentOffset + len >= match.endOffset) {
-								endNode = textNode;
-								endNodeOffset = match.endOffset - currentOffset;
-								break;
-							}
-							currentOffset += len;
+					while ((textNode = treeWalker.nextNode())) {
+						const len = (textNode.textContent || '').length;
+						if (!startNode && currentOffset + len > match.startOffset) {
+							startNode = textNode;
+							startNodeOffset = match.startOffset - currentOffset;
 						}
+						if (currentOffset + len >= match.endOffset) {
+							endNode = textNode;
+							endNodeOffset = match.endOffset - currentOffset;
+							break;
+						}
+						currentOffset += len;
+					}
 
-						if (startNode && endNode) {
-							range.setStart(startNode, Math.max(0, startNodeOffset));
-							range.setEnd(endNode, Math.min(endNodeOffset, (endNode.textContent || '').length));
-							const rects = range.getClientRects();
-							for (const rect of Array.from(rects)) {
-								if (rect.width > 0 && rect.height > 0) {
-									createCrossSiteOverlay(rect, match.entries);
-								}
+					if (startNode && endNode) {
+						range.setStart(startNode, Math.max(0, startNodeOffset));
+						range.setEnd(endNode, Math.min(endNodeOffset, (endNode.textContent || '').length));
+						const rects = range.getClientRects();
+						for (const rect of Array.from(rects)) {
+							if (rect.width > 0 && rect.height > 0) {
+								createCrossSiteOverlay(rect, match.entries);
 							}
-						} else {
-							// Fallback: use element bounding rect
-							const rect = match.element.getBoundingClientRect();
-							createCrossSiteOverlay(rect, match.entries);
 						}
-					} catch (e) {
-						// Fallback: use element bounding rect
+					} else {
 						const rect = match.element.getBoundingClientRect();
 						createCrossSiteOverlay(rect, match.entries);
-					} finally {
-						range.detach();
 					}
+				} catch (e) {
+					const rect = match.element.getBoundingClientRect();
+					createCrossSiteOverlay(rect, match.entries);
+				} finally {
+					range.detach();
 				}
 			}
 		} catch (e) {
