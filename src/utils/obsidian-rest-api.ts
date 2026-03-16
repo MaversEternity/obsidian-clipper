@@ -78,6 +78,37 @@ export async function fetchAllTaggedNotes(
 	}
 }
 
+// Update (overwrite) a note via REST API
+export async function updateNoteContent(
+	notePath: string,
+	content: string,
+	config?: ObsidianRESTConfig
+): Promise<{ success: boolean; error?: string }> {
+	const cfg = config || await getRESTConfig();
+
+	if (!cfg.apiKey) {
+		return { success: false, error: 'Obsidian REST API key not configured.' };
+	}
+
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: 'updateObsidianNote',
+			host: cfg.host,
+			apiKey: cfg.apiKey,
+			notePath,
+			content,
+		}) as { success?: boolean; error?: string };
+
+		if (response && response.error) {
+			return { success: false, error: response.error };
+		}
+
+		return { success: true };
+	} catch (error) {
+		return { success: false, error: `Failed to update note: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 // Check if Obsidian REST API is available
 export async function isObsidianAvailable(config?: ObsidianRESTConfig): Promise<boolean> {
 	const cfg = config || await getRESTConfig();

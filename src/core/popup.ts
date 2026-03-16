@@ -23,6 +23,7 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
+import { updateNoteContent } from '../utils/obsidian-rest-api';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -35,6 +36,7 @@ let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
 let currentTabId: number | undefined;
 let lastSelectedVault: string | null = null;
+let isNotePreviewMode = false;
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
@@ -315,7 +317,7 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 			inputElement.setAttribute('data-type', propertyType);
 			inputElement.type = 'text';
 			inputElement.value = Array.isArray(value) ? value.join(', ') : String(value);
-			inputElement.readOnly = true;
+			inputElement.setAttribute('data-id', Date.now().toString() + Math.random().toString(36).slice(2, 11));
 
 			metadataPropertyValue.appendChild(inputElement);
 			propertyDiv.appendChild(metadataPropertyKey);
@@ -327,6 +329,52 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 			existingProperties.parentNode.replaceChild(newProperties, existingProperties);
 		}
 		initializeIcons(newProperties);
+	}
+
+	// Switch to note preview mode — change main button to "Update"
+	isNotePreviewMode = true;
+	const mainButton = document.getElementById('clip-btn');
+	if (mainButton) {
+		mainButton.textContent = getMessage('overwriteNote');
+		mainButton.onclick = () => handleUpdateNote();
+	}
+}
+
+async function handleUpdateNote(): Promise<void> {
+	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+	const mainButton = document.getElementById('clip-btn');
+
+	if (!noteNameField || !noteContentField) return;
+
+	const noteName = noteNameField.value.trim();
+	const path = pathField?.value.trim() || '';
+	const notePath = path ? `${path}/${noteName}.md` : `${noteName}.md`;
+
+	// Rebuild full content: frontmatter from properties + body
+	const properties = getPropertiesFromDOM();
+	const frontmatter = await generateFrontmatter(properties);
+	const fileContent = frontmatter + noteContentField.value;
+
+	if (mainButton) {
+		mainButton.textContent = 'Saving...';
+		mainButton.setAttribute('disabled', 'true');
+	}
+
+	const result = await updateNoteContent(notePath, fileContent);
+
+	if (mainButton) {
+		mainButton.removeAttribute('disabled');
+		if (result.success) {
+			mainButton.textContent = getMessage('saved') || 'Saved';
+			setTimeout(() => {
+				mainButton.textContent = getMessage('overwriteNote');
+			}, 2000);
+		} else {
+			mainButton.textContent = getMessage('overwriteNote');
+			showError(result.error || 'Failed to update note');
+		}
 	}
 }
 

@@ -443,6 +443,31 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			}
 		}
 
+		// Obsidian REST API proxy — update (overwrite) note content
+		if (typedRequest.action === "updateObsidianNote") {
+			const { host, apiKey, notePath, content } = typedRequest as any;
+			const url = `${host}/vault/${encodeURIComponent(notePath)}`;
+			fetch(url, {
+				method: 'PUT',
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Content-Type': 'text/markdown',
+				},
+				body: content,
+			})
+				.then(async (resp) => {
+					if (!resp.ok) {
+						sendResponse({ error: `Obsidian API returned ${resp.status}: ${resp.statusText}` });
+						return;
+					}
+					sendResponse({ success: true });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to update note: ${error instanceof Error ? error.message : String(error)}` });
+				});
+			return true;
+		}
+
 		// Obsidian REST API proxy — fetch note content
 		if (typedRequest.action === "fetchObsidianNote") {
 			const { host, apiKey, notePath } = typedRequest as any;
