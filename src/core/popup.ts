@@ -1657,6 +1657,10 @@ async function handleClipObsidian(): Promise<void> {
 
 		if (!isSidePanel) {
 			setTimeout(() => window.close(), 500);
+		} else {
+			// Switch to preview mode and refresh cross-site matches on the page
+			applyNotePreview(noteName, fileContent, path);
+			notifyContentScriptContextChanged();
 		}
 	} catch (error) {
 		console.error('Error in handleClipObsidian:', error);
