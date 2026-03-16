@@ -467,6 +467,48 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
+		// Obsidian REST API proxy — search for all tagged notes
+		if (typedRequest.action === "searchObsidianNotes") {
+			const { host, apiKey } = typedRequest as any;
+			// Use JsonLogic to return tags for files that have them
+			// The query returns the tags array; files with no tags return []
+			const url = `${host}/search/`;
+			fetch(url, {
+				method: 'POST',
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Content-Type': 'application/vnd.olrapi.jsonlogic+json',
+					'Accept': 'application/json',
+				},
+				body: JSON.stringify({
+					"if": [
+						{ "!": { "==": [{ "var": "tags" }, []] } },
+						{ "var": "tags" },
+						false
+					]
+				}),
+			})
+				.then(async (resp) => {
+					if (!resp.ok) {
+						sendResponse({ error: `Obsidian API returned ${resp.status}: ${resp.statusText}` });
+						return;
+					}
+					const results = await resp.json() as { filename: string; result: any }[];
+					// Filter to notes where result is a non-empty array of tags
+					const notes = results
+						.filter(r => Array.isArray(r.result) && r.result.length > 0)
+						.map(r => ({
+							filename: r.filename,
+							tags: r.result as string[],
+						}));
+					sendResponse({ notes });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to search Obsidian: ${error instanceof Error ? error.message : String(error)}` });
+				});
+			return true;
+		}
+
 		// Obsidian REST API proxy — check availability
 		if (typedRequest.action === "checkObsidianAvailable") {
 			const { host, apiKey } = typedRequest as any;

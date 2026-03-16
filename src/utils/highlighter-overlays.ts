@@ -528,11 +528,18 @@ function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
 		menu.appendChild(tagsRow);
 	}
 
-	// Source URL
-	const sourceRow = document.createElement('div');
-	sourceRow.className = 'context-menu-source';
-	sourceRow.textContent = `From: ${new URL(entry.sourceUrl).hostname}`;
-	menu.appendChild(sourceRow);
+	// Source URL or note path
+	if (entry.sourceUrl) {
+		const sourceRow = document.createElement('div');
+		sourceRow.className = 'context-menu-source';
+		sourceRow.textContent = `From: ${new URL(entry.sourceUrl).hostname}`;
+		menu.appendChild(sourceRow);
+	} else if (entry.noteRef) {
+		const sourceRow = document.createElement('div');
+		sourceRow.className = 'context-menu-source';
+		sourceRow.textContent = entry.noteRef.name;
+		menu.appendChild(sourceRow);
+	}
 
 	// View Note button (if noteRef exists)
 	if (entry.noteRef) {

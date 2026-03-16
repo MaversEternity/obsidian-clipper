@@ -1,4 +1,5 @@
-import { loadTagIndex, TagIndexEntry } from './highlight-tag-index';
+import { fetchAllTaggedNotes } from './obsidian-rest-api';
+import { TagIndexEntry } from './highlight-tag-index';
 
 export interface CrossSiteMatch {
 	entry: TagIndexEntry;
@@ -7,43 +8,64 @@ export interface CrossSiteMatch {
 	endOffset: number;
 }
 
-const MAX_ENTRIES_TO_SCAN = 200;
 const MIN_TAG_LENGTH = 2;
 
-// Normalize whitespace for comparison
-function normalizeText(text: string): string {
-	return text.replace(/\s+/g, ' ').trim().toLowerCase();
-}
+// Cache for Obsidian tags — refreshed once per page load
+let cachedTagMap: Map<string, { filename: string; tags: string[] }[]> | null = null;
 
-// Find cross-site matches on the current page by matching tag names in page text
-export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
-	const currentUrl = window.location.href;
-	const allEntries = await loadTagIndex();
+async function getObsidianTagMap(): Promise<Map<string, { filename: string; tags: string[] }[]>> {
+	if (cachedTagMap) return cachedTagMap;
 
-	// Filter out entries from the current URL, must have tags
-	const candidates = allEntries
-		.filter(e => e.sourceUrl !== currentUrl)
-		.filter(e => e.tags.length > 0)
-		.slice(0, MAX_ENTRIES_TO_SCAN);
+	const result = await fetchAllTaggedNotes();
+	const tagMap = new Map<string, { filename: string; tags: string[] }[]>();
 
-	if (candidates.length === 0) return [];
+	if (result.error || !result.notes.length) {
+		cachedTagMap = tagMap;
+		return tagMap;
+	}
 
-	// Collect unique tags across all candidates, mapped to their entries
-	const tagToEntries = new Map<string, TagIndexEntry[]>();
-	for (const candidate of candidates) {
-		for (const tag of candidate.tags) {
-			const normalizedTag = tag.toLowerCase().trim();
-			if (normalizedTag.length < MIN_TAG_LENGTH) continue;
-			if (!tagToEntries.has(normalizedTag)) {
-				tagToEntries.set(normalizedTag, []);
+	for (const note of result.notes) {
+		for (const tag of note.tags) {
+			const normalized = tag.toLowerCase().replace(/^#/, '').trim();
+			if (normalized.length < MIN_TAG_LENGTH) continue;
+			if (!tagMap.has(normalized)) {
+				tagMap.set(normalized, []);
 			}
-			tagToEntries.get(normalizedTag)!.push(candidate);
+			tagMap.get(normalized)!.push(note);
 		}
 	}
 
-	if (tagToEntries.size === 0) return [];
+	cachedTagMap = tagMap;
+	return tagMap;
+}
 
-	// Walk text nodes to build a searchable text map
+// Convert an Obsidian note to a TagIndexEntry for overlay compatibility
+function noteToTagIndexEntry(note: { filename: string; tags: string[] }, matchedTag: string): TagIndexEntry {
+	// Extract note name and path from filename (e.g., "Clippings/My Note.md")
+	const withoutExt = note.filename.replace(/\.md$/, '');
+	const lastSlash = withoutExt.lastIndexOf('/');
+	const name = lastSlash >= 0 ? withoutExt.slice(lastSlash + 1) : withoutExt;
+	const path = lastSlash >= 0 ? withoutExt.slice(0, lastSlash) : '';
+
+	return {
+		highlightId: `obsidian-${note.filename}`,
+		sourceUrl: '',
+		textContent: '',
+		tags: note.tags.map(t => t.replace(/^#/, '')),
+		noteRef: {
+			vault: '', // Will be filled from settings if needed
+			name,
+			path,
+		},
+	};
+}
+
+// Find cross-site matches by looking up Obsidian note tags in page text
+export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
+	const tagMap = await getObsidianTagMap();
+	if (tagMap.size === 0) return [];
+
+	// Walk text nodes to build searchable text
 	const treeWalker = document.createTreeWalker(
 		document.body,
 		NodeFilter.SHOW_TEXT,
@@ -75,36 +97,30 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 
 	while ((node = treeWalker.nextNode())) {
 		const text = node.textContent || '';
-		textNodes.push({
-			node: node as Text,
-			start: cumulativeOffset,
-			text,
-		});
+		textNodes.push({ node: node as Text, start: cumulativeOffset, text });
 		cumulativeOffset += text.length;
 	}
 
 	const fullText = textNodes.map(tn => tn.text).join('');
-	const normalizedFull = normalizeText(fullText);
+	const normalizedFull = fullText.replace(/\s+/g, ' ').trim().toLowerCase();
 
 	const matches: CrossSiteMatch[] = [];
 
-	// For each tag, find word-boundary matches in the page text
-	for (const [tag, entries] of tagToEntries) {
-		// Use word boundary matching to avoid partial matches
+	// For each Obsidian tag, find word-boundary matches in page text
+	for (const [tag, notes] of tagMap) {
 		const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		const regex = new RegExp(`\\b${escapedTag}\\b`, 'gi');
 		let regexMatch: RegExpExecArray | null;
 
 		while ((regexMatch = regex.exec(normalizedFull)) !== null) {
 			const matchStart = regexMatch.index;
-			const matchEnd = matchStart + regexMatch[0].length;
 
-			// Find which text node contains the start of the match
+			// Find which text node contains this match
 			let startNodeInfo: TextNodeInfo | null = null;
 			let normalizedPos = 0;
 
 			for (const tn of textNodes) {
-				const normalizedNodeText = normalizeText(tn.text);
+				const normalizedNodeText = tn.text.replace(/\s+/g, ' ').trim().toLowerCase();
 				const nodeEnd = normalizedPos + normalizedNodeText.length;
 
 				if (!startNodeInfo && matchStart < nodeEnd) {
@@ -118,15 +134,14 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 				const element = findBlockParent(startNodeInfo.node);
 				if (element) {
 					const elementText = element.textContent || '';
-					const elementNormalized = normalizeText(elementText);
+					const elementNormalized = elementText.replace(/\s+/g, ' ').trim().toLowerCase();
 					const localRegex = new RegExp(`\\b${escapedTag}\\b`, 'gi');
 					const localMatch = localRegex.exec(elementNormalized);
 
 					if (localMatch) {
-						// Create a match for each entry that has this tag
-						for (const entry of entries) {
+						for (const note of notes) {
 							matches.push({
-								entry,
+								entry: noteToTagIndexEntry(note, tag),
 								element,
 								startOffset: localMatch.index,
 								endOffset: localMatch.index + localMatch[0].length,
@@ -138,7 +153,7 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 		}
 	}
 
-	// Deduplicate by entry + element position
+	// Deduplicate
 	const seen = new Set<string>();
 	return matches.filter(m => {
 		const key = `${m.entry.highlightId}-${m.startOffset}-${m.endOffset}`;

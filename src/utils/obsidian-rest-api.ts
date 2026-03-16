@@ -51,6 +51,33 @@ export async function fetchNoteContent(
 	}
 }
 
+// Fetch all notes that have tags via JsonLogic search
+export async function fetchAllTaggedNotes(
+	config?: ObsidianRESTConfig
+): Promise<{ notes: { filename: string; tags: string[] }[]; error?: string }> {
+	const cfg = config || await getRESTConfig();
+
+	if (!cfg.apiKey) {
+		return { notes: [], error: 'Obsidian REST API key not configured.' };
+	}
+
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: 'searchObsidianNotes',
+			host: cfg.host,
+			apiKey: cfg.apiKey,
+		}) as { notes?: { filename: string; tags: string[] }[]; error?: string };
+
+		if (response && response.error) {
+			return { notes: [], error: response.error };
+		}
+
+		return { notes: response?.notes || [] };
+	} catch (error) {
+		return { notes: [], error: `Failed to fetch tagged notes: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 // Check if Obsidian REST API is available
 export async function isObsidianAvailable(config?: ObsidianRESTConfig): Promise<boolean> {
 	const cfg = config || await getRESTConfig();
