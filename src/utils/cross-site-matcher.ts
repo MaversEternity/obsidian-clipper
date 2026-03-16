@@ -1,5 +1,4 @@
 import { loadTagIndex, TagIndexEntry } from './highlight-tag-index';
-import { getElementByXPath } from './dom-utils';
 
 export interface CrossSiteMatch {
 	entry: TagIndexEntry;
@@ -8,45 +7,48 @@ export interface CrossSiteMatch {
 	endOffset: number;
 }
 
-const MIN_MATCH_LENGTH = 20;
 const MAX_ENTRIES_TO_SCAN = 200;
+const MIN_TAG_LENGTH = 2;
 
 // Normalize whitespace for comparison
 function normalizeText(text: string): string {
 	return text.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-// Find cross-site matches on the current page
+// Find cross-site matches on the current page by matching tag names in page text
 export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 	const currentUrl = window.location.href;
 	const allEntries = await loadTagIndex();
 
-	// Filter out entries from the current URL and too-short texts
+	// Filter out entries from the current URL, must have tags
 	const candidates = allEntries
 		.filter(e => e.sourceUrl !== currentUrl)
-		.filter(e => e.textContent.length >= MIN_MATCH_LENGTH)
+		.filter(e => e.tags.length > 0)
 		.slice(0, MAX_ENTRIES_TO_SCAN);
 
 	if (candidates.length === 0) return [];
 
-	const matches: CrossSiteMatch[] = [];
-	const pageText = document.body.textContent || '';
-	const normalizedPageText = normalizeText(pageText);
+	// Collect unique tags across all candidates, mapped to their entries
+	const tagToEntries = new Map<string, TagIndexEntry[]>();
+	for (const candidate of candidates) {
+		for (const tag of candidate.tags) {
+			const normalizedTag = tag.toLowerCase().trim();
+			if (normalizedTag.length < MIN_TAG_LENGTH) continue;
+			if (!tagToEntries.has(normalizedTag)) {
+				tagToEntries.set(normalizedTag, []);
+			}
+			tagToEntries.get(normalizedTag)!.push(candidate);
+		}
+	}
 
-	// Quick pre-filter: only process candidates whose text appears on the page
-	const relevantCandidates = candidates.filter(c =>
-		normalizedPageText.includes(normalizeText(c.textContent))
-	);
+	if (tagToEntries.size === 0) return [];
 
-	if (relevantCandidates.length === 0) return [];
-
-	// Walk text nodes to find precise positions
+	// Walk text nodes to build a searchable text map
 	const treeWalker = document.createTreeWalker(
 		document.body,
 		NodeFilter.SHOW_TEXT,
 		{
 			acceptNode: (node) => {
-				// Skip hidden elements, script/style content, and our own overlays
 				const parent = node.parentElement;
 				if (!parent) return NodeFilter.FILTER_REJECT;
 				const tag = parent.tagName.toUpperCase();
@@ -62,10 +64,9 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 		}
 	);
 
-	// Build a map of text nodes with their cumulative offsets
 	interface TextNodeInfo {
 		node: Text;
-		start: number; // cumulative start offset in the concatenated text
+		start: number;
 		text: string;
 	}
 	const textNodes: TextNodeInfo[] = [];
@@ -82,27 +83,24 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 		cumulativeOffset += text.length;
 	}
 
-	// Concatenated page text from text nodes
 	const fullText = textNodes.map(tn => tn.text).join('');
 	const normalizedFull = normalizeText(fullText);
 
-	for (const candidate of relevantCandidates) {
-		const searchText = normalizeText(candidate.textContent);
-		let searchStart = 0;
+	const matches: CrossSiteMatch[] = [];
 
-		// Find all occurrences
-		while (searchStart < normalizedFull.length) {
-			const idx = normalizedFull.indexOf(searchText, searchStart);
-			if (idx === -1) break;
+	// For each tag, find word-boundary matches in the page text
+	for (const [tag, entries] of tagToEntries) {
+		// Use word boundary matching to avoid partial matches
+		const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const regex = new RegExp(`\\b${escapedTag}\\b`, 'gi');
+		let regexMatch: RegExpExecArray | null;
 
-			// Map normalized index back to the original text position (approximate)
-			// Find which text node contains this position
-			const matchStart = idx;
-			const matchEnd = idx + searchText.length;
+		while ((regexMatch = regex.exec(normalizedFull)) !== null) {
+			const matchStart = regexMatch.index;
+			const matchEnd = matchStart + regexMatch[0].length;
 
-			// Find the element containing the start of the match
+			// Find which text node contains the start of the match
 			let startNodeInfo: TextNodeInfo | null = null;
-			let endNodeInfo: TextNodeInfo | null = null;
 			let normalizedPos = 0;
 
 			for (const tn of textNodes) {
@@ -111,40 +109,36 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 
 				if (!startNodeInfo && matchStart < nodeEnd) {
 					startNodeInfo = tn;
-				}
-				if (matchEnd <= nodeEnd) {
-					endNodeInfo = tn;
 					break;
 				}
 				normalizedPos += normalizedNodeText.length;
 			}
 
 			if (startNodeInfo) {
-				// Find the closest block-level parent
 				const element = findBlockParent(startNodeInfo.node);
 				if (element) {
-					// Calculate offsets within the element
 					const elementText = element.textContent || '';
-					const candidateNormalized = normalizeText(candidate.textContent);
 					const elementNormalized = normalizeText(elementText);
-					const localIdx = elementNormalized.indexOf(candidateNormalized);
+					const localRegex = new RegExp(`\\b${escapedTag}\\b`, 'gi');
+					const localMatch = localRegex.exec(elementNormalized);
 
-					if (localIdx !== -1) {
-						matches.push({
-							entry: candidate,
-							element,
-							startOffset: localIdx,
-							endOffset: localIdx + candidateNormalized.length,
-						});
+					if (localMatch) {
+						// Create a match for each entry that has this tag
+						for (const entry of entries) {
+							matches.push({
+								entry,
+								element,
+								startOffset: localMatch.index,
+								endOffset: localMatch.index + localMatch[0].length,
+							});
+						}
 					}
 				}
 			}
-
-			searchStart = idx + searchText.length;
 		}
 	}
 
-	// Deduplicate by element + entry
+	// Deduplicate by entry + element position
 	const seen = new Set<string>();
 	return matches.filter(m => {
 		const key = `${m.entry.highlightId}-${m.startOffset}-${m.endOffset}`;

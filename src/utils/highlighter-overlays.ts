@@ -15,6 +15,7 @@ import {
 import { throttle } from './throttle';
 import { getElementByXPath, isDarkColor } from './dom-utils';
 import { TagIndexEntry } from './highlight-tag-index';
+import { showNotePopup } from './highlight-note-popup';
 
 let hoverOverlay: HTMLElement | null = null;
 let touchStartX: number = 0;
@@ -539,7 +540,6 @@ function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
 		viewNoteBtn.addEventListener('click', async (e) => {
 			e.stopPropagation();
 			closeContextMenu();
-			const { showNotePopup } = await import('./highlight-note-popup');
 			showNotePopup(entry.noteRef!, rect);
 		});
 		menu.appendChild(viewNoteBtn);
@@ -627,7 +627,6 @@ async function handleHighlightClick(event: Event) {
 			viewNoteBtn.addEventListener('click', async (e) => {
 				e.stopPropagation();
 				closeContextMenu();
-				const { showNotePopup } = await import('./highlight-note-popup');
 				showNotePopup(highlight.noteRef!, rect);
 			});
 			menu.appendChild(viewNoteBtn);

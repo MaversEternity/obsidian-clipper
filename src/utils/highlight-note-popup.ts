@@ -1,5 +1,5 @@
 import { NoteRef } from './highlighter';
-import { fetchNoteContent } from './obsidian-rest-api';
+import { fetchNoteContent, getRESTConfig, saveRESTConfig } from './obsidian-rest-api';
 
 const POPUP_CLASS = 'obsidian-note-popup';
 
@@ -64,24 +64,18 @@ export async function showNotePopup(noteRef: NoteRef, anchorRect: DOMRect) {
 
 	document.body.appendChild(popup);
 
-	// Fetch note content
-	const notePath = noteRef.path ? `${noteRef.path}${noteRef.name}` : noteRef.name;
-	const result = await fetchNoteContent(notePath);
+	// Check if API key is configured
+	const config = await getRESTConfig();
 
-	if (result.error) {
+	if (!config.apiKey) {
+		// Show inline setup form
 		content.textContent = '';
-		const errorMsg = document.createElement('div');
-		errorMsg.className = 'note-popup-error';
-		errorMsg.textContent = result.error;
-		content.appendChild(errorMsg);
-	} else {
-		content.textContent = '';
-		// Render as preformatted text (markdown source)
-		const pre = document.createElement('pre');
-		pre.className = 'note-popup-markdown';
-		pre.textContent = result.content;
-		content.appendChild(pre);
+		showApiKeySetup(content, noteRef, popup, anchorRect);
+		return;
 	}
+
+	// Fetch note content
+	await loadNoteContent(content, noteRef);
 
 	// Close on outside click
 	setTimeout(() => {
@@ -89,6 +83,81 @@ export async function showNotePopup(noteRef: NoteRef, anchorRect: DOMRect) {
 	}, 0);
 
 	// Close on Escape
+	addEscListener();
+}
+
+function showApiKeySetup(content: HTMLElement, noteRef: NoteRef, popup: HTMLElement, anchorRect: DOMRect) {
+	const setupDiv = document.createElement('div');
+	setupDiv.className = 'note-popup-setup';
+
+	const instructions = document.createElement('p');
+	instructions.className = 'note-popup-setup-text';
+	instructions.textContent = 'Enter your Obsidian Local REST API key to preview notes. Find it in Obsidian → Settings → Community plugins → Local REST API.';
+	setupDiv.appendChild(instructions);
+
+	const inputRow = document.createElement('div');
+	inputRow.className = 'note-popup-setup-row';
+
+	const input = document.createElement('input');
+	input.className = 'note-popup-setup-input';
+	input.type = 'text';
+	input.placeholder = 'Paste API key here';
+	inputRow.appendChild(input);
+
+	const saveBtn = document.createElement('button');
+	saveBtn.className = 'context-menu-btn mod-primary';
+	saveBtn.textContent = 'Save';
+	saveBtn.addEventListener('click', async (e) => {
+		e.stopPropagation();
+		const apiKey = input.value.trim();
+		if (!apiKey) return;
+
+		saveBtn.textContent = 'Saving...';
+		saveBtn.setAttribute('disabled', 'true');
+
+		await saveRESTConfig({ host: 'http://localhost:27123', apiKey });
+
+		// Now try loading the note
+		content.textContent = '';
+		content.textContent = 'Loading...';
+		await loadNoteContent(content, noteRef);
+	});
+	inputRow.appendChild(saveBtn);
+
+	setupDiv.appendChild(inputRow);
+	content.appendChild(setupDiv);
+
+	// Focus input
+	setTimeout(() => input.focus(), 0);
+
+	// Close on outside click
+	setTimeout(() => {
+		document.addEventListener('click', hideNotePopup, { once: true });
+	}, 0);
+
+	addEscListener();
+}
+
+async function loadNoteContent(content: HTMLElement, noteRef: NoteRef) {
+	const notePath = noteRef.path ? `${noteRef.path}/${noteRef.name}.md` : `${noteRef.name}.md`;
+	const result = await fetchNoteContent(notePath);
+
+	content.textContent = '';
+
+	if (result.error) {
+		const errorMsg = document.createElement('div');
+		errorMsg.className = 'note-popup-error';
+		errorMsg.textContent = result.error;
+		content.appendChild(errorMsg);
+	} else {
+		const pre = document.createElement('pre');
+		pre.className = 'note-popup-markdown';
+		pre.textContent = result.content;
+		content.appendChild(pre);
+	}
+}
+
+function addEscListener() {
 	const handleEsc = (e: KeyboardEvent) => {
 		if (e.key === 'Escape') {
 			hideNotePopup();

@@ -14,6 +14,7 @@ import { getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { debounce } from '../utils/debounce';
 import browser from '../utils/browser-polyfill';
 import { createUsageChart, aggregateUsageData } from '../utils/charts';
+import { getRESTConfig, saveRESTConfig } from '../utils/obsidian-rest-api';
 import { getClipHistory } from '../utils/storage-utils';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
@@ -425,6 +426,18 @@ function initializeHighlighterSettings(): void {
 		highlightBehaviorSelect.value = generalSettings.highlightBehavior;
 		highlightBehaviorSelect.addEventListener('change', () => {
 			saveSettings({ ...generalSettings, highlightBehavior: highlightBehaviorSelect.value });
+		});
+	}
+
+	// Obsidian REST API key
+	const apiKeyInput = document.getElementById('obsidian-rest-api-key') as HTMLInputElement;
+	if (apiKeyInput) {
+		getRESTConfig().then(config => {
+			apiKeyInput.value = config.apiKey;
+		});
+		apiKeyInput.addEventListener('change', () => {
+			const apiKey = apiKeyInput.value.trim();
+			saveRESTConfig({ host: 'http://localhost:27123', apiKey });
 		});
 	}
 }

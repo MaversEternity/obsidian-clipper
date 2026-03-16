@@ -12,6 +12,7 @@ import {
 } from './highlighter-overlays';
 import { detectBrowser, addBrowserClassToHtml } from './browser-detection';
 import { generalSettings, loadSettings } from './storage-utils';
+import { updateTagIndex } from './highlight-tag-index';
 
 /**
  * Helper function to create SVG elements
@@ -1140,7 +1141,6 @@ export function getHighlightByIndex(index: number): AnyHighlightData | undefined
 
 // Sync tagged highlights to the tag index
 async function syncTagIndex() {
-	const { updateTagIndex } = await import('./highlight-tag-index');
 	updateTagIndex(window.location.href, highlights);
 }
 

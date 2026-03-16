@@ -5,7 +5,7 @@ export interface ObsidianRESTConfig {
 	apiKey: string;
 }
 
-const DEFAULT_HOST = 'https://localhost:27124';
+const DEFAULT_HOST = 'http://localhost:27123';
 
 // Get REST API config from storage
 export async function getRESTConfig(): Promise<ObsidianRESTConfig> {
