@@ -307,6 +307,9 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 		pathField.value = notePath;
 	}
 
+	// Sync context dropdown with note path
+	syncContextToPath(notePath);
+
 	// Overwrite existing property inputs with frontmatter values
 	if (Object.keys(frontmatter).length > 0) {
 		for (const [key, value] of Object.entries(frontmatter)) {
@@ -322,12 +325,19 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 		}
 	}
 
-	// Switch to note preview mode — change main button to "Update"
+	// Switch to note preview mode — change main button to "Update" with delete in secondary
 	isNotePreviewMode = true;
 	const mainButton = document.getElementById('clip-btn');
 	if (mainButton) {
 		mainButton.textContent = getMessage('overwriteNote');
 		mainButton.onclick = () => handleUpdateNote();
+	}
+
+	const moreDropdown = document.getElementById('more-dropdown');
+	const secondaryActions = moreDropdown?.querySelector('.secondary-actions');
+	if (secondaryActions) {
+		secondaryActions.textContent = '';
+		addSecondaryAction(secondaryActions, 'deleteNote', handleDeleteNote);
 	}
 }
 
@@ -389,6 +399,42 @@ async function handleUpdateNote(): Promise<void> {
 		} else {
 			mainButton.textContent = getMessage('overwriteNote');
 			showError(result.error || 'Failed to update note');
+		}
+	}
+}
+
+async function handleDeleteNote(): Promise<void> {
+	if (!notePreviewData) return;
+
+	if (!confirm(`Delete "${notePreviewData.noteName}"?`)) return;
+
+	const mainButton = document.getElementById('clip-btn');
+	const path = notePreviewData.notePath;
+	const notePath = path ? `${path}/${notePreviewData.noteName}.md` : `${notePreviewData.noteName}.md`;
+
+	if (mainButton) {
+		mainButton.textContent = 'Deleting...';
+		mainButton.setAttribute('disabled', 'true');
+	}
+
+	const result = await deleteNote(notePath);
+
+	if (mainButton) {
+		mainButton.removeAttribute('disabled');
+	}
+
+	if (result.success) {
+		// Exit note preview mode
+		isNotePreviewMode = false;
+		notePreviewData = null;
+		if (currentTabId) {
+			await refreshFields(currentTabId);
+		}
+		determineMainAction();
+	} else {
+		showError(result.error || 'Failed to delete note');
+		if (mainButton) {
+			mainButton.textContent = getMessage('overwriteNote');
 		}
 	}
 }
@@ -592,6 +638,14 @@ function setupEventListeners(tabId: number) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
 			}
+		});
+	}
+
+	// Sync path field changes back to context dropdown
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+	if (pathField) {
+		pathField.addEventListener('input', () => {
+			syncContextToPath(pathField.value.trim());
 		});
 	}
 
@@ -995,6 +1049,30 @@ function applyContext(context: string) {
 	if (pathField && context) {
 		pathField.value = context;
 	}
+}
+
+function syncContextToPath(path: string) {
+	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
+	if (!contextSelect) return;
+
+	if (!path) {
+		contextSelect.value = '';
+		setLocalStorage('activeContext', '');
+		return;
+	}
+
+	const options = Array.from(contextSelect.options).map(o => o.value);
+	if (options.includes(path)) {
+		contextSelect.value = path;
+	} else {
+		// Add as new option
+		const option = document.createElement('option');
+		option.value = path;
+		option.textContent = path;
+		contextSelect.insertBefore(option, contextSelect.lastElementChild);
+		contextSelect.value = path;
+	}
+	setLocalStorage('activeContext', path);
 }
 
 function buildTemplateFieldsSkeleton(template: Template | null) {
@@ -1617,6 +1695,7 @@ function getActionIcon(actionType: string): string {
 		case 'copyToClipboard': return 'copy';
 		case 'saveFile': return 'file-down';
 		case 'addToObsidian': return 'pen-line';
+		case 'deleteNote': return 'trash-2';
 		default: return 'plus';
 	}
 }

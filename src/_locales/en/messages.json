@@ -543,6 +543,9 @@
 	"overwriteNote": {
 		"message": "Overwrite note"
 	},
+	"deleteNote": {
+		"message": "Delete note"
+	},
 	"pageCannotBeClipped": {
 		"message": "This page cannot be clipped."
 	},
