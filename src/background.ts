@@ -616,6 +616,41 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			}
 		}
 
+		// Open Chrome side panel for note preview
+		if (typedRequest.action === "openNoteInSidePanel") {
+			const tabId = sender.tab?.id;
+			const windowId = sender.tab?.windowId;
+			if (tabId && windowId && typeof chrome !== 'undefined' && chrome.sidePanel) {
+				(async () => {
+					const alreadyOpen = sidePanelOpenWindows.has(windowId);
+					try {
+						await chrome.sidePanel.open({ tabId });
+						sidePanelOpenWindows.add(windowId);
+
+						if (alreadyOpen) {
+							const stored = await browser.storage.local.get('pendingNotePreview') as any;
+							if (stored.pendingNotePreview) {
+								const { noteName, noteContent, notePath } = stored.pendingNotePreview;
+								browser.runtime.sendMessage({
+									action: 'showNotePreview',
+									noteName,
+									noteContent,
+									notePath,
+								}).catch(() => {});
+							}
+						}
+						sendResponse({ usedSidePanel: true });
+					} catch (e) {
+						console.error('Failed to open side panel:', e);
+						sendResponse({ usedSidePanel: false });
+					}
+				})();
+			} else {
+				sendResponse({ usedSidePanel: false });
+			}
+			return true;
+		}
+
 		// Open embedded iframe for note preview
 		if (typedRequest.action === "openEmbeddedForNote") {
 			browser.tabs.query({ active: true, currentWindow: true }).then(async (tabs) => {

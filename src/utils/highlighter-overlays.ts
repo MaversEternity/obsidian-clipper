@@ -789,7 +789,7 @@ async function openNoteInClipper(noteRef: import('./highlighter').NoteRef) {
 	const result = await fetchNoteContent(notePath);
 	const noteContent = result.error ? `Error: ${result.error}` : result.content;
 
-	// Store note preview data BEFORE opening iframe so popup.ts can read it on init
+	// Store note preview data so popup.ts can read it on init
 	await browser.storage.local.set({
 		pendingNotePreview: {
 			noteName: noteRef.name,
@@ -798,12 +798,19 @@ async function openNoteInClipper(noteRef: import('./highlighter').NoteRef) {
 		}
 	});
 
-	// Ensure the clipper iframe is open
+	// Try to open in Chrome side panel first, fall back to embedded iframe
+	const response = await browser.runtime.sendMessage({ action: 'openNoteInSidePanel' }) as { usedSidePanel?: boolean };
+
+	if (response?.usedSidePanel) {
+		// Side panel opened — it will read pendingNotePreview on init
+		return;
+	}
+
+	// Fallback: embedded iframe
 	const containerId = 'obsidian-clipper-container';
 	let container = document.getElementById(containerId);
 
 	if (!container) {
-		// Open the iframe via background → content script toggle-iframe
 		await browser.runtime.sendMessage({ action: 'openEmbeddedForNote' });
 	} else {
 		// Iframe already open — send message directly
