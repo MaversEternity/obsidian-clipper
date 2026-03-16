@@ -590,7 +590,8 @@ function handleCrossSiteOverlayClick(event: Event, entries: TagIndexEntry[]) {
 			openBtn.addEventListener('click', (e) => {
 				e.stopPropagation();
 				closeContextMenu();
-				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(entry.noteRef!.vault)}&file=${encodeURIComponent(entry.noteRef!.path + entry.noteRef!.name)}`;
+				const filePath = entry.noteRef!.path ? `${entry.noteRef!.path}/${entry.noteRef!.name}` : entry.noteRef!.name;
+				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(entry.noteRef!.vault)}&file=${encodeURIComponent(filePath)}`;
 				window.open(obsidianUrl);
 			});
 			noteSection.appendChild(openBtn);
@@ -679,7 +680,8 @@ async function handleHighlightClick(event: Event) {
 			openBtn.addEventListener('click', (e) => {
 				e.stopPropagation();
 				closeContextMenu();
-				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(highlight.noteRef!.vault)}&file=${encodeURIComponent(highlight.noteRef!.path + highlight.noteRef!.name)}`;
+				const filePath = highlight.noteRef!.path ? `${highlight.noteRef!.path}/${highlight.noteRef!.name}` : highlight.noteRef!.name;
+				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(highlight.noteRef!.vault)}&file=${encodeURIComponent(filePath)}`;
 				window.open(obsidianUrl);
 			});
 			menu.appendChild(openBtn);

@@ -272,11 +272,24 @@ function setupMessageListeners() {
 	});
 }
 
-function applyNotePreview(noteName: string, noteContent: string, notePath: string) {
+function applyNotePreview(noteName: string, noteContent: string, notePath: string, matchTemplate: boolean = true) {
 	notePreviewData = { noteName, noteContent, notePath };
 
 	// Parse frontmatter and body
 	const { frontmatter, body } = parseFrontmatter(noteContent);
+
+	// Auto-select template from frontmatter (skip when re-applying after template switch)
+	if (matchTemplate) {
+		const templateName = frontmatter['clipper-template'];
+		if (templateName && templates.length > 0) {
+			const matched = templates.find(t => t.name === templateName);
+			if (matched && matched.id !== currentTemplate?.id) {
+				currentTemplate = matched;
+				updateTemplateDropdown();
+				buildTemplateFieldsSkeleton(currentTemplate);
+			}
+		}
+	}
 
 	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
 	if (noteNameField && noteName) {
@@ -332,6 +345,16 @@ async function handleUpdateNote(): Promise<void> {
 
 	// Rebuild full content: frontmatter from properties + body
 	const properties = getPropertiesFromDOM();
+
+	// Ensure clipper-template is saved with current template
+	if (currentTemplate && !properties.some(p => p.name === 'clipper-template')) {
+		properties.push({
+			id: Date.now().toString() + Math.random().toString(36).slice(2, 11),
+			name: 'clipper-template',
+			value: currentTemplate.name,
+		});
+	}
+
 	const frontmatter = await generateFrontmatter(properties);
 	const fileContent = frontmatter + noteContentField.value;
 
@@ -386,7 +409,7 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, any>; 
 
 		const kvMatch = trimmed.match(/^([^:]+):\s*(.*)$/);
 		if (kvMatch) {
-			currentKey = kvMatch[1].trim();
+			currentKey = kvMatch[1].trim().replace(/^["']|["']$/g, '');
 			const val = kvMatch[2].trim();
 			if (val === '') {
 				// Could be start of array
@@ -517,20 +540,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 					const { noteName, noteContent, notePath } = pendingData.pendingNotePreview as { noteName: string; noteContent: string; notePath: string };
 					await browser.storage.local.remove('pendingNotePreview');
 
-					// Auto-select template based on source URL from note frontmatter
-					const { frontmatter } = parseFrontmatter(noteContent);
-					const sourceUrl = frontmatter.source || frontmatter.url || '';
-					if (sourceUrl && templates.length > 0) {
-						const matchedTemplate = await findMatchingTemplate(sourceUrl, async () => null);
-						if (matchedTemplate) {
-							currentTemplate = matchedTemplate;
-							updateTemplateDropdown();
-						}
-					}
-
-					// Set note preview state before refreshFields — it will re-apply after filling template values
+					// Set note preview state before refreshFields — applyNotePreview handles template matching
 					isNotePreviewMode = true;
 					notePreviewData = { noteName, noteContent, notePath };
+					applyNotePreview(noteName, noteContent, notePath);
 					await refreshFields(currentTabId, false);
 				} else {
 					// Normal content load
@@ -863,9 +876,9 @@ async function refreshFields(tabId: number, checkTemplateTriggers: boolean = tru
 					extractedData.schemaOrgData
 				);
 
-				// Re-apply note preview data over template values
+				// Re-apply note preview data over template values (skip template matching — user may have switched manually)
 				if (isNotePreviewMode && notePreviewData) {
-					applyNotePreview(notePreviewData.noteName, notePreviewData.noteContent, notePreviewData.notePath);
+					applyNotePreview(notePreviewData.noteName, notePreviewData.noteContent, notePreviewData.notePath, false);
 				}
 
 				// Update variables panel if it's open
@@ -1440,6 +1453,15 @@ async function handleClipObsidian(): Promise<void> {
 
 		// Gather content
 		const properties = getPropertiesFromDOM();
+
+		// Store which template was used so we can auto-select it when re-opening the note
+		if (!properties.some(p => p.name === 'clipper-template')) {
+			properties.push({
+				id: Date.now().toString() + Math.random().toString(36).slice(2, 11),
+				name: 'clipper-template',
+				value: currentTemplate.name,
+			});
+		}
 
 		const frontmatter = await generateFrontmatter(properties);
 		const fileContent = frontmatter + noteContentField.value;

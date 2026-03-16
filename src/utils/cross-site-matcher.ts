@@ -1,5 +1,6 @@
 import { fetchAllTaggedNotes } from './obsidian-rest-api';
 import { TagIndexEntry } from './highlight-tag-index';
+import browser from './browser-polyfill';
 
 export interface CrossSiteMatch {
 	entries: TagIndexEntry[];
@@ -12,9 +13,15 @@ const MIN_TAG_LENGTH = 2;
 
 // Cache for Obsidian tags — refreshed once per page load
 let cachedTagMap: Map<string, { filename: string; tags: string[] }[]> | null = null;
+let cachedVaultName: string = '';
 
 async function getObsidianTagMap(): Promise<Map<string, { filename: string; tags: string[] }[]>> {
 	if (cachedTagMap) return cachedTagMap;
+
+	// Get vault name from storage
+	const data = await browser.storage.sync.get('vaults');
+	const vaults = Array.isArray(data.vaults) ? data.vaults : [];
+	cachedVaultName = vaults[0] || '';
 
 	const result = await fetchAllTaggedNotes();
 	const tagMap = new Map<string, { filename: string; tags: string[] }[]>();
@@ -53,7 +60,7 @@ function noteToTagIndexEntry(note: { filename: string; tags: string[] }, matched
 		textContent: '',
 		tags: note.tags.map(t => t.replace(/^#/, '')),
 		noteRef: {
-			vault: '', // Will be filled from settings if needed
+			vault: cachedVaultName,
 			name,
 			path,
 		},
