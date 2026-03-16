@@ -443,6 +443,29 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			}
 		}
 
+		// Obsidian REST API proxy — delete note
+		if (typedRequest.action === "deleteObsidianNote") {
+			const { host, apiKey, notePath } = typedRequest as any;
+			const url = `${host}/vault/${encodeURIComponent(notePath)}`;
+			fetch(url, {
+				method: 'DELETE',
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+				},
+			})
+				.then(async (resp) => {
+					if (!resp.ok) {
+						sendResponse({ error: `Obsidian API returned ${resp.status}: ${resp.statusText}` });
+						return;
+					}
+					sendResponse({ success: true });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to delete note: ${error instanceof Error ? error.message : String(error)}` });
+				});
+			return true;
+		}
+
 		// Obsidian REST API proxy — update (overwrite) note content
 		if (typedRequest.action === "updateObsidianNote") {
 			const { host, apiKey, notePath, content } = typedRequest as any;
@@ -545,6 +568,39 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 				})
 				.catch(() => {
 					sendResponse({ available: false });
+				});
+			return true;
+		}
+
+		// Obsidian REST API proxy — list vault directories
+		if (typedRequest.action === "listObsidianDirectories") {
+			const { host, apiKey } = typedRequest as any;
+			fetch(`${host}/vault/`, {
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Accept': 'application/json',
+				},
+			})
+				.then(async (resp) => {
+					if (!resp.ok) {
+						sendResponse({ error: `Obsidian API returned ${resp.status}` });
+						return;
+					}
+					const data = await resp.json();
+					// Extract unique top-level directories from file paths
+					const dirs = new Set<string>();
+					if (data.files && Array.isArray(data.files)) {
+						for (const file of data.files) {
+							const slashIndex = file.indexOf('/');
+							if (slashIndex > 0) {
+								dirs.add(file.slice(0, slashIndex));
+							}
+						}
+					}
+					sendResponse({ directories: Array.from(dirs).sort() });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to list directories: ${error instanceof Error ? error.message : String(error)}` });
 				});
 			return true;
 		}

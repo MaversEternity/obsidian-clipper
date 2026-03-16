@@ -23,7 +23,7 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
-import { updateNoteContent } from '../utils/obsidian-rest-api';
+import { updateNoteContent, fetchVaultDirectories, deleteNote } from '../utils/obsidian-rest-api';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -363,7 +363,21 @@ async function handleUpdateNote(): Promise<void> {
 		mainButton.setAttribute('disabled', 'true');
 	}
 
+	// Determine original path to detect moves
+	const originalPath = notePreviewData
+		? (notePreviewData.notePath ? `${notePreviewData.notePath}/${notePreviewData.noteName}.md` : `${notePreviewData.noteName}.md`)
+		: notePath;
+
 	const result = await updateNoteContent(notePath, fileContent);
+
+	// If path changed, delete the old note
+	if (result.success && notePath !== originalPath) {
+		await deleteNote(originalPath);
+		// Update stored preview data to reflect new location
+		if (notePreviewData) {
+			notePreviewData = { noteName, noteContent: fileContent, notePath: path };
+		}
+	}
 
 	if (mainButton) {
 		mainButton.removeAttribute('disabled');
@@ -520,6 +534,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 			try {
 				// DOM-dependent initializations
 				updateVaultDropdown(loadedSettings.vaults);
+				await initializeContextDropdown();
 				populateTemplateDropdown();
 				setupEventListeners(currentTabId);
 				await initializeUI();
@@ -915,6 +930,70 @@ function populateTemplateDropdown() {
 			templateDropdown.appendChild(option);
 		});
 		templateDropdown.value = currentTemplate.id;
+	}
+}
+
+async function initializeContextDropdown() {
+	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
+	if (!contextSelect) return;
+
+	// Load directories from Obsidian
+	const result = await fetchVaultDirectories();
+	if (result.directories.length > 0) {
+		for (const dir of result.directories) {
+			const option = document.createElement('option');
+			option.value = dir;
+			option.textContent = dir;
+			contextSelect.appendChild(option);
+		}
+	}
+
+	// Add "New context..." option
+	const newOption = document.createElement('option');
+	newOption.value = '__new__';
+	newOption.textContent = '+ New context...';
+	contextSelect.appendChild(newOption);
+
+	// Restore saved context
+	const saved = await getLocalStorage('activeContext');
+	if (saved && typeof saved === 'string') {
+		contextSelect.value = saved;
+		applyContext(saved);
+	}
+
+	contextSelect.addEventListener('change', async () => {
+		const value = contextSelect.value;
+		if (value === '__new__') {
+			const name = prompt('New context name (creates a directory in your vault):');
+			if (name && name.trim()) {
+				const trimmed = name.trim();
+				// Create directory in Obsidian by writing a visible placeholder note
+				const placeholder = `${trimmed}/${trimmed}.md`;
+				await updateNoteContent(placeholder, `# ${trimmed}\n`);
+				// Add option and select it
+				const option = document.createElement('option');
+				option.value = trimmed;
+				option.textContent = trimmed;
+				contextSelect.insertBefore(option, contextSelect.lastElementChild);
+				contextSelect.value = trimmed;
+				await setLocalStorage('activeContext', trimmed);
+				applyContext(trimmed);
+			} else {
+				// Revert to previous
+				const prev = await getLocalStorage('activeContext');
+				contextSelect.value = (prev as string) || '';
+			}
+		} else {
+			await setLocalStorage('activeContext', value);
+			applyContext(value);
+		}
+	});
+}
+
+function applyContext(context: string) {
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+	if (pathField && context) {
+		pathField.value = context;
 	}
 }
 

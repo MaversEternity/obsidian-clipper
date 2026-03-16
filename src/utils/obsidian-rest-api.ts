@@ -109,6 +109,62 @@ export async function updateNoteContent(
 	}
 }
 
+// Delete a note via REST API
+export async function deleteNote(
+	notePath: string,
+	config?: ObsidianRESTConfig
+): Promise<{ success: boolean; error?: string }> {
+	const cfg = config || await getRESTConfig();
+
+	if (!cfg.apiKey) {
+		return { success: false, error: 'Obsidian REST API key not configured.' };
+	}
+
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: 'deleteObsidianNote',
+			host: cfg.host,
+			apiKey: cfg.apiKey,
+			notePath,
+		}) as { success?: boolean; error?: string };
+
+		if (response && response.error) {
+			return { success: false, error: response.error };
+		}
+
+		return { success: true };
+	} catch (error) {
+		return { success: false, error: `Failed to delete note: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
+// List top-level vault directories
+export async function fetchVaultDirectories(
+	config?: ObsidianRESTConfig
+): Promise<{ directories: string[]; error?: string }> {
+	const cfg = config || await getRESTConfig();
+
+	if (!cfg.apiKey) {
+		return { directories: [], error: 'Obsidian REST API key not configured.' };
+	}
+
+	try {
+		const response = await browser.runtime.sendMessage({
+			action: 'listObsidianDirectories',
+			host: cfg.host,
+			apiKey: cfg.apiKey,
+		}) as { directories?: string[]; error?: string };
+
+		if (response && response.error) {
+			return { directories: [], error: response.error };
+		}
+
+		return { directories: response?.directories || [] };
+	} catch (error) {
+		return { directories: [], error: `Failed to list directories: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 // Check if Obsidian REST API is available
 export async function isObsidianAvailable(config?: ObsidianRESTConfig): Promise<boolean> {
 	const cfg = config || await getRESTConfig();

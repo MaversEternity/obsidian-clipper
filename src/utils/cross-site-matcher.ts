@@ -72,6 +72,22 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 	const tagMap = await getObsidianTagMap();
 	if (tagMap.size === 0) return [];
 
+	// Filter by active context (directory prefix)
+	const contextData = await browser.storage.local.get('activeContext');
+	const activeContext = (contextData.activeContext as string) || '';
+
+	// If a context is set, filter tagMap to only include notes from that directory
+	const filteredTagMap = new Map<string, { filename: string; tags: string[] }[]>();
+	for (const [tag, notes] of tagMap) {
+		const filtered = activeContext
+			? notes.filter(n => n.filename.startsWith(activeContext + '/'))
+			: notes;
+		if (filtered.length > 0) {
+			filteredTagMap.set(tag, filtered);
+		}
+	}
+	if (filteredTagMap.size === 0) return [];
+
 	// Walk text nodes to build searchable text
 	const treeWalker = document.createTreeWalker(
 		document.body,
@@ -115,7 +131,7 @@ export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 	const positionMap = new Map<string, { entries: TagIndexEntry[]; element: Element; startOffset: number; endOffset: number }>();
 
 	// For each Obsidian tag, find word-boundary matches in page text
-	for (const [tag, notes] of tagMap) {
+	for (const [tag, notes] of filteredTagMap) {
 		const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		const regex = new RegExp(`\\b${escapedTag}\\b`, 'gi');
 		let regexMatch: RegExpExecArray | null;
