@@ -1,17 +1,20 @@
-import { 
-	handleTextSelection, 
-	highlightElement, 
-	AnyHighlightData, 
-	highlights, 
+import {
+	handleTextSelection,
+	highlightElement,
+	AnyHighlightData,
+	highlights,
 	isApplyingHighlights,
 	sortHighlights,
 	applyHighlights,
 	saveHighlights,
 	updateHighlights,
-	updateHighlighterMenu
+	updateHighlighterMenu,
+	getHighlightByIndex,
+	updateHighlightTags,
 } from './highlighter';
 import { throttle } from './throttle';
 import { getElementByXPath, isDarkColor } from './dom-utils';
+import { TagIndexEntry } from './highlight-tag-index';
 
 let hoverOverlay: HTMLElement | null = null;
 let touchStartX: number = 0;
@@ -495,40 +498,248 @@ export function removeHoverOverlay() {
 	});
 }
 
-// Update the type of handleHighlightClick
+// Close any existing context menu
+function closeContextMenu() {
+	const existing = document.querySelector('.obsidian-highlight-context-menu');
+	if (existing) existing.remove();
+}
+
+// Handle click on a cross-site match overlay
+function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
+	event.stopPropagation();
+	event.preventDefault();
+
+	closeContextMenu();
+
+	const overlay = event.currentTarget as HTMLElement;
+	const rect = overlay.getBoundingClientRect();
+
+	const menu = document.createElement('div');
+	menu.className = 'obsidian-highlight-context-menu';
+
+	// Tags display
+	if (entry.tags.length > 0) {
+		const tagsRow = document.createElement('div');
+		tagsRow.className = 'context-menu-tags';
+		tagsRow.textContent = entry.tags.map(t => `#${t}`).join(' ');
+		menu.appendChild(tagsRow);
+	}
+
+	// Source URL
+	const sourceRow = document.createElement('div');
+	sourceRow.className = 'context-menu-source';
+	sourceRow.textContent = `From: ${new URL(entry.sourceUrl).hostname}`;
+	menu.appendChild(sourceRow);
+
+	// View Note button (if noteRef exists)
+	if (entry.noteRef) {
+		const viewNoteBtn = document.createElement('button');
+		viewNoteBtn.className = 'context-menu-btn';
+		viewNoteBtn.textContent = 'View Note';
+		viewNoteBtn.addEventListener('click', async (e) => {
+			e.stopPropagation();
+			closeContextMenu();
+			const { showNotePopup } = await import('./highlight-note-popup');
+			showNotePopup(entry.noteRef!, rect);
+		});
+		menu.appendChild(viewNoteBtn);
+
+		// Open in Obsidian button
+		const openBtn = document.createElement('button');
+		openBtn.className = 'context-menu-btn';
+		openBtn.textContent = 'Open in Obsidian';
+		openBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			closeContextMenu();
+			const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(entry.noteRef!.vault)}&file=${encodeURIComponent(entry.noteRef!.path + entry.noteRef!.name)}`;
+			window.open(obsidianUrl);
+		});
+		menu.appendChild(openBtn);
+	}
+
+	positionContextMenu(menu, rect);
+	document.body.appendChild(menu);
+
+	// Close on outside click
+	setTimeout(() => {
+		document.addEventListener('click', closeContextMenu, { once: true });
+	}, 0);
+}
+
+// Handle click on a regular highlight overlay — show context menu
 async function handleHighlightClick(event: Event) {
 	event.stopPropagation();
-	event.preventDefault(); // Prevent default touch behavior
+	event.preventDefault();
+
 	const overlay = event.currentTarget as HTMLElement;
-	
+
 	try {
-		if (!overlay || !overlay.dataset) {
-			return;
-		}
+		if (!overlay || !overlay.dataset) return;
 
 		const index = overlay.dataset.highlightIndex;
-		if (index === undefined) {
-			console.warn('No highlight index found on clicked element');
-			return;
-		}
+		if (index === undefined) return;
 
 		const highlightIndex = parseInt(index);
-		if (isNaN(highlightIndex) || highlightIndex < 0 || highlightIndex >= highlights.length) {
-			console.warn(`Invalid highlight index: ${index}`);
-			return;
+		if (isNaN(highlightIndex) || highlightIndex < 0 || highlightIndex >= highlights.length) return;
+
+		const highlight = getHighlightByIndex(highlightIndex);
+		if (!highlight) return;
+
+		closeContextMenu();
+
+		const rect = overlay.getBoundingClientRect();
+		const menu = document.createElement('div');
+		menu.className = 'obsidian-highlight-context-menu';
+
+		// Tags section
+		const tagsSection = document.createElement('div');
+		tagsSection.className = 'context-menu-section';
+
+		const tagsLabel = document.createElement('label');
+		tagsLabel.className = 'context-menu-label';
+		tagsLabel.textContent = 'Tags';
+		tagsSection.appendChild(tagsLabel);
+
+		const tagsInput = document.createElement('input');
+		tagsInput.className = 'context-menu-input';
+		tagsInput.type = 'text';
+		tagsInput.placeholder = 'tag1, tag2, tag3';
+		tagsInput.value = (highlight.tags || []).join(', ');
+		tagsSection.appendChild(tagsInput);
+
+		const saveTagsBtn = document.createElement('button');
+		saveTagsBtn.className = 'context-menu-btn mod-primary';
+		saveTagsBtn.textContent = 'Save Tags';
+		saveTagsBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			const tags = tagsInput.value.split(',').map(t => t.trim()).filter(t => t.length > 0);
+			updateHighlightTags(highlight.id, tags);
+			closeContextMenu();
+		});
+		tagsSection.appendChild(saveTagsBtn);
+		menu.appendChild(tagsSection);
+
+		// View Note button (if noteRef exists)
+		if (highlight.noteRef) {
+			const viewNoteBtn = document.createElement('button');
+			viewNoteBtn.className = 'context-menu-btn';
+			viewNoteBtn.textContent = 'View Note';
+			viewNoteBtn.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				closeContextMenu();
+				const { showNotePopup } = await import('./highlight-note-popup');
+				showNotePopup(highlight.noteRef!, rect);
+			});
+			menu.appendChild(viewNoteBtn);
+
+			const openBtn = document.createElement('button');
+			openBtn.className = 'context-menu-btn';
+			openBtn.textContent = 'Open in Obsidian';
+			openBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				closeContextMenu();
+				const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(highlight.noteRef!.vault)}&file=${encodeURIComponent(highlight.noteRef!.path + highlight.noteRef!.name)}`;
+				window.open(obsidianUrl);
+			});
+			menu.appendChild(openBtn);
 		}
 
-		const highlightToRemove = highlights[highlightIndex];
-		const newHighlights = highlights.filter((h: AnyHighlightData) => h.id !== highlightToRemove.id);
-		updateHighlights(newHighlights);
-		removeExistingHighlightOverlays(highlightIndex);
-		sortHighlights();
-		applyHighlights();
-		saveHighlights();
-		updateHighlighterMenu();
+		// Remove button
+		const removeBtn = document.createElement('button');
+		removeBtn.className = 'context-menu-btn mod-danger';
+		removeBtn.textContent = 'Remove Highlight';
+		removeBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			closeContextMenu();
+			const newHighlights = highlights.filter((h: AnyHighlightData) => h.id !== highlight.id);
+			updateHighlights(newHighlights);
+			removeExistingHighlightOverlays(highlightIndex);
+			sortHighlights();
+			applyHighlights();
+			saveHighlights();
+			updateHighlighterMenu();
+		});
+		menu.appendChild(removeBtn);
+
+		positionContextMenu(menu, rect);
+		document.body.appendChild(menu);
+
+		// Focus the tags input
+		tagsInput.focus();
+
+		// Prevent closing on input clicks
+		menu.addEventListener('click', (e) => e.stopPropagation());
+
+		// Handle Enter key in tags input
+		tagsInput.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				saveTagsBtn.click();
+			}
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				closeContextMenu();
+			}
+		});
+
+		// Close on outside click
+		setTimeout(() => {
+			document.addEventListener('click', closeContextMenu, { once: true });
+		}, 0);
 	} catch (error) {
 		console.error('Error handling highlight click:', error);
 	}
+}
+
+// Position a context menu near an overlay rect
+function positionContextMenu(menu: HTMLElement, anchorRect: DOMRect) {
+	menu.style.position = 'fixed';
+	menu.style.zIndex = '9999999999';
+
+	// Position below the highlight, centered
+	let left = anchorRect.left + anchorRect.width / 2;
+	let top = anchorRect.bottom + 8;
+
+	// Adjust if too close to bottom
+	if (top + 200 > window.innerHeight) {
+		top = anchorRect.top - 8;
+		menu.style.transform = 'translate(-50%, -100%)';
+	} else {
+		menu.style.transform = 'translateX(-50%)';
+	}
+
+	// Clamp left
+	left = Math.max(150, Math.min(left, window.innerWidth - 150));
+
+	menu.style.left = `${left}px`;
+	menu.style.top = `${top}px`;
+}
+
+// Create a cross-site highlight overlay
+export function createCrossSiteOverlay(rect: DOMRect, entry: TagIndexEntry) {
+	const overlay = document.createElement('div');
+	overlay.className = 'obsidian-highlight-overlay obsidian-highlight-crosssite';
+	overlay.dataset.crossSite = 'true';
+	overlay.dataset.highlightId = entry.highlightId;
+
+	overlay.style.position = 'absolute';
+	overlay.style.left = `${rect.left + window.scrollX - 2}px`;
+	overlay.style.top = `${rect.top + window.scrollY - 2}px`;
+	overlay.style.width = `${rect.width + 4}px`;
+	overlay.style.height = `${rect.height + 4}px`;
+	overlay.style.display = 'block';
+	overlay.style.pointerEvents = 'auto';
+	overlay.style.cursor = 'pointer';
+
+	overlay.addEventListener('click', (e) => handleCrossSiteOverlayClick(e, entry));
+	overlay.addEventListener('touchend', (e) => handleCrossSiteOverlayClick(e, entry));
+
+	document.body.appendChild(overlay);
+}
+
+// Remove all cross-site overlays
+export function removeCrossSiteOverlays() {
+	document.querySelectorAll('.obsidian-highlight-crosssite').forEach(el => el.remove());
 }
 
 // Remove all existing highlight overlays from the page

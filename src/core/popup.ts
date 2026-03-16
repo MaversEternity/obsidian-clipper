@@ -1263,6 +1263,21 @@ async function handleClipObsidian(): Promise<void> {
 		const tabInfo = await getCurrentTabInfo();
 		await incrementStat('addToObsidian', selectedVault, path, tabInfo.url, tabInfo.title);
 
+		// Link highlights to the saved note
+		try {
+			const noteRef = { vault: selectedVault, path: path, name: noteName };
+			const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+			if (tabs[0]?.id) {
+				await browser.runtime.sendMessage({
+					action: 'linkHighlightsToNote',
+					tabId: tabs[0].id,
+					noteRef,
+				});
+			}
+		} catch (e) {
+			console.warn('Failed to link highlights to note:', e);
+		}
+
 		if (!currentTemplate.vault) {
 			lastSelectedVault = selectedVault;
 			await setLocalStorage('lastSelectedVault', lastSelectedVault);

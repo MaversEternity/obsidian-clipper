@@ -89,11 +89,21 @@ const BLOCK_LEVEL_TAGS_FOR_SPLIT = [
 	'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'PRE', 'BLOCKQUOTE', 'FIGURE', 'TABLE'
 ];
 
+export interface NoteRef {
+	vault: string;
+	path: string;
+	name: string;
+}
+
 export interface HighlightData {
 	id: string;
 	xpath: string;
 	content: string;
 	notes?: string[]; // Annotations
+	tags?: string[];
+	noteRef?: NoteRef;
+	sourceUrl?: string;
+	textContent?: string; // Plain text version of content for cross-site matching
 }
 
 export interface TextHighlightData extends HighlightData {
@@ -475,7 +485,7 @@ export function handleTextSelection(selection: Selection, notes?: string[]) {
 		let currentBatchHighlights = [...highlights]; // Start with global state for merging
 
 		for (const highlightData of newHighlightDatas) {
-			const newHighlightWithNotes = { ...highlightData, notes: notes || [] };
+			const newHighlightWithNotes = enrichHighlight({ ...highlightData, notes: notes || [] });
 			// Merge current new highlight with the accumulating batch from this selection + pre-existing ones
 			currentBatchHighlights = mergeOverlappingHighlights(currentBatchHighlights, newHighlightWithNotes);
 		}
@@ -716,10 +726,26 @@ function getTextOffset(container: Element, targetNode: Node, targetOffset: numbe
 	return offset;
 }
 
+// Extract plain text from HTML content
+function extractTextContent(html: string): string {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, 'text/html');
+	return (doc.body.textContent || '').trim();
+}
+
+// Enrich highlight with sourceUrl and textContent
+function enrichHighlight(highlight: AnyHighlightData): AnyHighlightData {
+	return {
+		...highlight,
+		sourceUrl: highlight.sourceUrl || window.location.href,
+		textContent: highlight.textContent || extractTextContent(highlight.content),
+	};
+}
+
 // Add a new highlight to the page
 function addHighlight(highlight: AnyHighlightData, notes?: string[]) {
 	const oldHighlights = [...highlights];
-	const newHighlight = { ...highlight, notes: notes || [] };
+	const newHighlight = enrichHighlight({ ...highlight, notes: notes || [] });
 	const mergedHighlights = mergeOverlappingHighlights(highlights, newHighlight);
 	highlights = mergedHighlights;
 	addToHistory('add', oldHighlights, mergedHighlights);
@@ -905,6 +931,7 @@ export function saveHighlights() {
 			const allHighlights: HighlightsStorage = result.highlights || {};
 			allHighlights[url] = data;
 			browser.storage.local.set({ highlights: allHighlights });
+			syncTagIndex();
 		});
 	} else {
 		// Remove the entry if there are no highlights
@@ -912,6 +939,7 @@ export function saveHighlights() {
 			const allHighlights: HighlightsStorage = result.highlights || {};
 			delete allHighlights[url];
 			browser.storage.local.set({ highlights: allHighlights });
+			syncTagIndex();
 		});
 	}
 }
@@ -1075,4 +1103,46 @@ function findLastTextNode(element: Element): Text | null {
 	return lastNode as Text | null;
 }
 
+// Update tags on a specific highlight by ID
+export function updateHighlightTags(highlightId: string, tags: string[]) {
+	const cleanedTags = tags
+		.map(t => t.trim().toLowerCase())
+		.filter(t => t.length > 0 && t.length <= 50);
+	const idx = highlights.findIndex(h => h.id === highlightId);
+	if (idx !== -1) {
+		highlights[idx] = { ...highlights[idx], tags: cleanedTags };
+		saveHighlights();
+		syncTagIndex();
+	}
+}
+
+// Update noteRef on a specific highlight by ID
+export function updateHighlightNoteRef(highlightId: string, noteRef: NoteRef) {
+	const idx = highlights.findIndex(h => h.id === highlightId);
+	if (idx !== -1) {
+		highlights[idx] = { ...highlights[idx], noteRef };
+		saveHighlights();
+		syncTagIndex();
+	}
+}
+
+// Link all current highlights to a note
+export function linkHighlightsToNote(noteRef: NoteRef) {
+	highlights = highlights.map(h => ({ ...h, noteRef }));
+	saveHighlights();
+	syncTagIndex();
+}
+
+// Get highlight data by index
+export function getHighlightByIndex(index: number): AnyHighlightData | undefined {
+	return highlights[index];
+}
+
+// Sync tagged highlights to the tag index
+async function syncTagIndex() {
+	const { updateTagIndex } = await import('./highlight-tag-index');
+	updateTagIndex(window.location.href, highlights);
+}
+
 export { getElementXPath } from './dom-utils';
+export { extractTextContent };

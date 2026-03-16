@@ -6,6 +6,8 @@ import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
+import { findCrossSiteMatches } from './utils/cross-site-matcher';
+import { createCrossSiteOverlay, removeCrossSiteOverlays } from './utils/highlighter-overlays';
 
 declare global {
 	interface Window {
@@ -400,6 +402,9 @@ declare global {
 			}
 			updateHasHighlights();
 			sendResponse({ success: true });
+		} else if (request.action === "linkHighlightsToNote") {
+			highlighter.linkHighlightsToNote(request.noteRef);
+			sendResponse({ success: true });
 		} else if (request.action === "clearHighlights") {
 			highlighter.clearHighlights();
 			updateHasHighlights();
@@ -439,12 +444,69 @@ declare global {
 	async function initializeHighlighter() {
 		await loadSettings();
 		await highlighter.loadHighlights();
-		
+
 		if (generalSettings.alwaysShowHighlights) {
 			highlighter.applyHighlights();
 		}
-		
+
 		updateHasHighlights();
+
+		// Scan for cross-site tagged highlight matches
+		try {
+			const matches = await findCrossSiteMatches();
+			if (matches.length > 0) {
+				for (const match of matches) {
+					const range = document.createRange();
+					try {
+						// Try to create a range from the element text offsets
+						const treeWalker = document.createTreeWalker(match.element, NodeFilter.SHOW_TEXT);
+						let currentOffset = 0;
+						let startNode: Node | null = null;
+						let startNodeOffset = 0;
+						let endNode: Node | null = null;
+						let endNodeOffset = 0;
+						let textNode: Node | null;
+
+						while ((textNode = treeWalker.nextNode())) {
+							const len = (textNode.textContent || '').length;
+							if (!startNode && currentOffset + len > match.startOffset) {
+								startNode = textNode;
+								startNodeOffset = match.startOffset - currentOffset;
+							}
+							if (currentOffset + len >= match.endOffset) {
+								endNode = textNode;
+								endNodeOffset = match.endOffset - currentOffset;
+								break;
+							}
+							currentOffset += len;
+						}
+
+						if (startNode && endNode) {
+							range.setStart(startNode, Math.max(0, startNodeOffset));
+							range.setEnd(endNode, Math.min(endNodeOffset, (endNode.textContent || '').length));
+							const rects = range.getClientRects();
+							for (const rect of Array.from(rects)) {
+								if (rect.width > 0 && rect.height > 0) {
+									createCrossSiteOverlay(rect, match.entry);
+								}
+							}
+						} else {
+							// Fallback: use element bounding rect
+							const rect = match.element.getBoundingClientRect();
+							createCrossSiteOverlay(rect, match.entry);
+						}
+					} catch (e) {
+						// Fallback: use element bounding rect
+						const rect = match.element.getBoundingClientRect();
+						createCrossSiteOverlay(rect, match.entry);
+					} finally {
+						range.detach();
+					}
+				}
+			}
+		} catch (e) {
+			console.warn('Cross-site highlight matching failed:', e);
+		}
 	}
 
 	// Initialize highlighter

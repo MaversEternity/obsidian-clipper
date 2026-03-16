@@ -443,8 +443,59 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			}
 		}
 
+		// Obsidian REST API proxy — fetch note content
+		if (typedRequest.action === "fetchObsidianNote") {
+			const { host, apiKey, notePath } = typedRequest as any;
+			const url = `${host}/vault/${encodeURIComponent(notePath)}`;
+			fetch(url, {
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Accept': 'text/markdown',
+				},
+			})
+				.then(async (resp) => {
+					if (!resp.ok) {
+						sendResponse({ error: `Obsidian API returned ${resp.status}: ${resp.statusText}` });
+						return;
+					}
+					const content = await resp.text();
+					sendResponse({ content });
+				})
+				.catch((error) => {
+					sendResponse({ error: `Failed to connect to Obsidian: ${error instanceof Error ? error.message : String(error)}` });
+				});
+			return true;
+		}
+
+		// Obsidian REST API proxy — check availability
+		if (typedRequest.action === "checkObsidianAvailable") {
+			const { host, apiKey } = typedRequest as any;
+			fetch(`${host}/`, {
+				headers: { 'Authorization': `Bearer ${apiKey}` },
+			})
+				.then((resp) => {
+					sendResponse({ available: resp.ok });
+				})
+				.catch(() => {
+					sendResponse({ available: false });
+				});
+			return true;
+		}
+
+		// Forward linkHighlightsToNote to content script
+		if (typedRequest.action === "linkHighlightsToNote") {
+			const tabId = (typedRequest as any).tabId;
+			const noteRef = (typedRequest as any).noteRef;
+			if (tabId && noteRef) {
+				browser.tabs.sendMessage(tabId, { action: "linkHighlightsToNote", noteRef })
+					.then(() => sendResponse({ success: true }))
+					.catch((error) => sendResponse({ success: false, error: String(error) }));
+				return true;
+			}
+		}
+
 		// For other actions that use sendResponse
-		if (typedRequest.action === "extractContent" || 
+		if (typedRequest.action === "extractContent" ||
 			typedRequest.action === "ensureContentScriptLoaded" ||
 			typedRequest.action === "getHighlighterMode" ||
 			typedRequest.action === "toggleHighlighterMode" ||
@@ -512,7 +563,7 @@ const debouncedUpdateContextMenu = debounce(async (tabId: number) => {
 				},
 				{
 					id: 'copy-markdown-to-clipboard',
-					title: browser.i18n.getMessage('copyToClipboard'),
+					title: browser.i18n.getMessage('copyToClipboard') || 'Copy to clipboard',
 					contexts: ["page", "selection"]
 				},
 				// {
@@ -537,7 +588,7 @@ const debouncedUpdateContextMenu = debounce(async (tabId: number) => {
 				},
 				{
 					id: 'open-embedded',
-					title: browser.i18n.getMessage('openEmbedded'),
+					title: browser.i18n.getMessage('openEmbedded') || 'Open embedded',
 					contexts: ["page", "selection"]
 				}
 			];
@@ -546,7 +597,7 @@ const debouncedUpdateContextMenu = debounce(async (tabId: number) => {
 		if (browserType === 'chrome') {
 			menuItems.push({
 				id: 'open-side-panel',
-				title: browser.i18n.getMessage('openSidePanel'),
+				title: browser.i18n.getMessage('openSidePanel') || 'Open side panel',
 				contexts: ["page", "selection"]
 			});
 		}

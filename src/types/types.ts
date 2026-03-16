@@ -87,6 +87,8 @@ export interface Settings {
 	history: HistoryEntry[];
 	ratings: Rating[];
 	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard';
+	obsidianRestApiKey?: string;
+	obsidianRestApiHost?: string;
 }
 
 export interface ModelConfig {
