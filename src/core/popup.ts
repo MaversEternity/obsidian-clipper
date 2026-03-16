@@ -255,8 +255,128 @@ function setupMessageListeners() {
 			// This message is now handled by checkHighlighterModeState
 		} else if (request.action === "highlighterModeChanged") {
 			// This message is now handled by checkHighlighterModeState
+		} else if (request.action === "showNotePreview") {
+			applyNotePreview(request.noteName, request.noteContent, request.notePath);
+			sendResponse({ success: true });
 		}
 	});
+}
+
+function applyNotePreview(noteName: string, noteContent: string, notePath: string) {
+	// Parse frontmatter and body
+	const { frontmatter, body } = parseFrontmatter(noteContent);
+
+	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
+	if (noteNameField && noteName) {
+		noteNameField.value = noteName;
+		adjustNoteNameHeight(noteNameField);
+	}
+
+	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	if (noteContentField) {
+		noteContentField.value = body;
+	}
+
+	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
+	if (pathField && notePath) {
+		pathField.value = notePath;
+	}
+
+	// Render frontmatter as properties
+	if (Object.keys(frontmatter).length > 0) {
+		const existingProperties = document.querySelector('.metadata-properties') as HTMLElement;
+		const newProperties = createElementWithClass('div', 'metadata-properties');
+
+		for (const [key, value] of Object.entries(frontmatter)) {
+			const propertyDiv = createElementWithClass('div', 'metadata-property');
+			const propertyType = generalSettings.propertyTypes.find(p => p.name === key)?.type || 'text';
+
+			const metadataPropertyKey = document.createElement('div');
+			metadataPropertyKey.className = 'metadata-property-key';
+
+			const propertyIconSpan = document.createElement('span');
+			propertyIconSpan.className = 'metadata-property-icon';
+			const iconElement = document.createElement('i');
+			iconElement.setAttribute('data-lucide', getPropertyTypeIcon(propertyType));
+			propertyIconSpan.appendChild(iconElement);
+
+			const propertyLabel = document.createElement('label');
+			propertyLabel.setAttribute('for', key);
+			propertyLabel.textContent = key;
+
+			metadataPropertyKey.appendChild(propertyIconSpan);
+			metadataPropertyKey.appendChild(propertyLabel);
+
+			const metadataPropertyValue = document.createElement('div');
+			metadataPropertyValue.className = 'metadata-property-value';
+
+			const inputElement = document.createElement('input');
+			inputElement.id = key;
+			inputElement.setAttribute('data-type', propertyType);
+			inputElement.type = 'text';
+			inputElement.value = Array.isArray(value) ? value.join(', ') : String(value);
+			inputElement.readOnly = true;
+
+			metadataPropertyValue.appendChild(inputElement);
+			propertyDiv.appendChild(metadataPropertyKey);
+			propertyDiv.appendChild(metadataPropertyValue);
+			newProperties.appendChild(propertyDiv);
+		}
+
+		if (existingProperties && existingProperties.parentNode) {
+			existingProperties.parentNode.replaceChild(newProperties, existingProperties);
+		}
+		initializeIcons(newProperties);
+	}
+}
+
+function parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
+	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+	if (!match) {
+		return { frontmatter: {}, body: content };
+	}
+
+	const yamlStr = match[1];
+	const body = match[2].trim();
+	const frontmatter: Record<string, any> = {};
+
+	// Simple YAML parser for frontmatter key-value pairs
+	let currentKey = '';
+	let currentArrayValues: string[] = [];
+	let inArray = false;
+
+	for (const line of yamlStr.split('\n')) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+
+		if (inArray && trimmed.startsWith('- ')) {
+			currentArrayValues.push(trimmed.slice(2).replace(/^["']|["']$/g, ''));
+			continue;
+		} else if (inArray) {
+			frontmatter[currentKey] = currentArrayValues;
+			inArray = false;
+			currentArrayValues = [];
+		}
+
+		const kvMatch = trimmed.match(/^([^:]+):\s*(.*)$/);
+		if (kvMatch) {
+			currentKey = kvMatch[1].trim();
+			const val = kvMatch[2].trim();
+			if (val === '') {
+				// Could be start of array
+				inArray = true;
+				currentArrayValues = [];
+			} else {
+				frontmatter[currentKey] = val.replace(/^["']|["']$/g, '');
+			}
+		}
+	}
+
+	if (inArray && currentArrayValues.length > 0) {
+		frontmatter[currentKey] = currentArrayValues;
+	}
+
+	return { frontmatter, body };
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -348,8 +468,16 @@ document.addEventListener('DOMContentLoaded', async function() {
 					});
 				}
 
-				// Initial content load
-				await refreshFields(currentTabId);
+				// Check if we're opening for a note preview
+				const pendingData = await browser.storage.local.get('pendingNotePreview') as Record<string, any>;
+				if (pendingData.pendingNotePreview) {
+					const { noteName, noteContent, notePath } = pendingData.pendingNotePreview as { noteName: string; noteContent: string; notePath: string };
+					applyNotePreview(noteName, noteContent, notePath);
+					await browser.storage.local.remove('pendingNotePreview');
+				} else {
+					// Normal content load
+					await refreshFields(currentTabId);
+				}
 			} catch (error) {
 				console.error('Error initializing popup:', error);
 				showError(getMessage('pleaseReload'));

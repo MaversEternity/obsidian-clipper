@@ -482,6 +482,18 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
+		// Open embedded iframe for note preview
+		if (typedRequest.action === "openEmbeddedForNote") {
+			browser.tabs.query({ active: true, currentWindow: true }).then(async (tabs) => {
+				if (tabs[0]?.id) {
+					await ensureContentScriptLoadedInBackground(tabs[0].id);
+					await browser.tabs.sendMessage(tabs[0].id, { action: "toggle-iframe" });
+					sendResponse({ success: true });
+				}
+			});
+			return true;
+		}
+
 		// Forward linkHighlightsToNote to content script
 		if (typedRequest.action === "linkHighlightsToNote") {
 			const tabId = (typedRequest as any).tabId;

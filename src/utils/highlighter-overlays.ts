@@ -16,6 +16,8 @@ import { throttle } from './throttle';
 import { getElementByXPath, isDarkColor } from './dom-utils';
 import { TagIndexEntry } from './highlight-tag-index';
 import { showNotePopup } from './highlight-note-popup';
+import { fetchNoteContent } from './obsidian-rest-api';
+import browser from './browser-polyfill';
 
 let hoverOverlay: HTMLElement | null = null;
 let touchStartX: number = 0;
@@ -536,11 +538,11 @@ function handleCrossSiteOverlayClick(event: Event, entry: TagIndexEntry) {
 	if (entry.noteRef) {
 		const viewNoteBtn = document.createElement('button');
 		viewNoteBtn.className = 'context-menu-btn';
-		viewNoteBtn.textContent = 'View Note';
+		viewNoteBtn.textContent = 'View in Clipper';
 		viewNoteBtn.addEventListener('click', async (e) => {
 			e.stopPropagation();
 			closeContextMenu();
-			showNotePopup(entry.noteRef!, rect);
+			await openNoteInClipper(entry.noteRef!);
 		});
 		menu.appendChild(viewNoteBtn);
 
@@ -734,6 +736,41 @@ export function createCrossSiteOverlay(rect: DOMRect, entry: TagIndexEntry) {
 	overlay.addEventListener('touchend', (e) => handleCrossSiteOverlayClick(e, entry));
 
 	document.body.appendChild(overlay);
+}
+
+// Open a note in the clipper side panel
+async function openNoteInClipper(noteRef: import('./highlighter').NoteRef) {
+	const notePath = noteRef.path ? `${noteRef.path}/${noteRef.name}.md` : `${noteRef.name}.md`;
+
+	// Fetch note content via background script
+	const result = await fetchNoteContent(notePath);
+	const noteContent = result.error ? `Error: ${result.error}` : result.content;
+
+	// Store note preview data BEFORE opening iframe so popup.ts can read it on init
+	await browser.storage.local.set({
+		pendingNotePreview: {
+			noteName: noteRef.name,
+			noteContent,
+			notePath: noteRef.path || '',
+		}
+	});
+
+	// Ensure the clipper iframe is open
+	const containerId = 'obsidian-clipper-container';
+	let container = document.getElementById(containerId);
+
+	if (!container) {
+		// Open the iframe via background → content script toggle-iframe
+		await browser.runtime.sendMessage({ action: 'openEmbeddedForNote' });
+	} else {
+		// Iframe already open — send message directly
+		browser.runtime.sendMessage({
+			action: 'showNotePreview',
+			noteName: noteRef.name,
+			noteContent,
+			notePath: noteRef.path || '',
+		});
+	}
 }
 
 // Remove all cross-site overlays
