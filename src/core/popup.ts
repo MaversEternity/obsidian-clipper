@@ -30,6 +30,44 @@ interface ReaderModeResponse {
 	isActive: boolean;
 }
 
+function addMultitextPill(container: HTMLElement, value: string, beforeElement: HTMLInputElement) {
+	const pill = document.createElement('span');
+	pill.className = 'multitext-pill';
+	pill.textContent = value;
+	const removeBtn = document.createElement('span');
+	removeBtn.className = 'multitext-pill-remove';
+	removeBtn.textContent = '×';
+	removeBtn.addEventListener('click', (e) => {
+		e.stopPropagation();
+		pill.remove();
+	});
+	pill.appendChild(removeBtn);
+	container.insertBefore(pill, beforeElement);
+}
+
+function setMultitextValues(container: HTMLElement, values: string[]) {
+	// Remove existing pills
+	container.querySelectorAll('.multitext-pill').forEach(p => p.remove());
+	const input = container.querySelector('.multitext-input') as HTMLInputElement;
+	if (input) {
+		input.value = '';
+		for (const val of values) {
+			if (val.trim()) addMultitextPill(container, val.trim(), input);
+		}
+	}
+}
+
+function getMultitextValues(container: HTMLElement): string {
+	const pills = Array.from(container.querySelectorAll('.multitext-pill'));
+	return pills.map(p => {
+		// Get text content excluding the remove button
+		const clone = p.cloneNode(true) as HTMLElement;
+		const removeBtn = clone.querySelector('.multitext-pill-remove');
+		if (removeBtn) removeBtn.remove();
+		return clone.textContent?.trim() || '';
+	}).filter(v => v).join(', ');
+}
+
 let loadedSettings: Settings;
 let currentTemplate: Template | null = null;
 let templates: Template[] = [];
@@ -64,14 +102,29 @@ const memoizedGenerateFrontmatter = memoizeWithExpiration(
 );
 
 function getPropertiesFromDOM(): Property[] {
-	return Array.from(document.querySelectorAll('.metadata-property input')).map(input => {
-		const inputElement = input as HTMLInputElement;
-		return {
-			id: inputElement.dataset.id || Date.now().toString() + Math.random().toString(36).slice(2, 11),
-			name: inputElement.id,
-			value: inputElement.type === 'checkbox' ? inputElement.checked : inputElement.value
-		};
-	}) as Property[];
+	const properties: Property[] = [];
+	document.querySelectorAll('.metadata-property').forEach(propDiv => {
+		// Check for multitext container
+		const multitextContainer = propDiv.querySelector('.multitext-container') as HTMLElement;
+		if (multitextContainer) {
+			properties.push({
+				id: (multitextContainer as any).dataset.id || Date.now().toString() + Math.random().toString(36).slice(2, 11),
+				name: multitextContainer.id,
+				value: getMultitextValues(multitextContainer)
+			});
+			return;
+		}
+		// Regular input
+		const input = propDiv.querySelector('.metadata-property-value input') as HTMLInputElement;
+		if (input) {
+			properties.push({
+				id: input.dataset.id || Date.now().toString() + Math.random().toString(36).slice(2, 11),
+				name: input.id,
+				value: input.type === 'checkbox' ? String(input.checked) : input.value
+			});
+		}
+	});
+	return properties as Property[];
 }
 
 // Helper function to get tab info from background script
@@ -313,13 +366,16 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 	// Overwrite existing property inputs with frontmatter values
 	if (Object.keys(frontmatter).length > 0) {
 		for (const [key, value] of Object.entries(frontmatter)) {
-			const inputElement = document.getElementById(key) as HTMLInputElement;
-			if (inputElement) {
-				const propertyType = inputElement.getAttribute('data-type') || 'text';
-				if (propertyType === 'checkbox') {
-					inputElement.checked = value === true || value === 'true';
+			const element = document.getElementById(key) as HTMLElement;
+			if (element) {
+				const propertyType = element.getAttribute('data-type') || 'text';
+				if (propertyType === 'multitext') {
+					const items = Array.isArray(value) ? value : String(value).split(',').map(s => s.trim());
+					setMultitextValues(element, items);
+				} else if (propertyType === 'checkbox') {
+					(element as HTMLInputElement).checked = value === true || value === 'true';
 				} else {
-					inputElement.value = Array.isArray(value) ? value.join(', ') : String(value);
+					(element as HTMLInputElement).value = Array.isArray(value) ? value.join(', ') : String(value);
 				}
 			}
 		}
@@ -1118,13 +1174,51 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 			const metadataPropertyValue = document.createElement('div');
 			metadataPropertyValue.className = 'metadata-property-value';
 
-			const inputElement = document.createElement('input');
-			inputElement.id = property.name;
-			inputElement.setAttribute('data-type', propertyType);
-			inputElement.setAttribute('data-template-value', property.value);
-			inputElement.type = propertyType === 'checkbox' ? 'checkbox' : 'text';
+			if (propertyType === 'multitext') {
+				const container = document.createElement('div');
+				container.className = 'multitext-container';
+				container.id = property.name;
+				container.setAttribute('data-type', 'multitext');
+				container.setAttribute('data-template-value', property.value);
 
-			metadataPropertyValue.appendChild(inputElement);
+				const input = document.createElement('input');
+				input.type = 'text';
+				input.className = 'multitext-input';
+				input.addEventListener('keydown', (e) => {
+					if (e.key === 'Enter' || e.key === ',') {
+						e.preventDefault();
+						const val = input.value.trim().replace(/,$/,'');
+						if (val) {
+							addMultitextPill(container, val, input);
+							input.value = '';
+						}
+					} else if (e.key === 'Backspace' && input.value === '') {
+						const pills = container.querySelectorAll('.multitext-pill');
+						if (pills.length > 0) {
+							pills[pills.length - 1].remove();
+						}
+					}
+				});
+				input.addEventListener('blur', () => {
+					const val = input.value.trim().replace(/,$/,'');
+					if (val) {
+						addMultitextPill(container, val, input);
+						input.value = '';
+					}
+				});
+
+				container.appendChild(input);
+				container.addEventListener('click', () => input.focus());
+				metadataPropertyValue.appendChild(container);
+			} else {
+				const inputElement = document.createElement('input');
+				inputElement.id = property.name;
+				inputElement.setAttribute('data-type', propertyType);
+				inputElement.setAttribute('data-template-value', property.value);
+				inputElement.type = propertyType === 'checkbox' ? 'checkbox' : 'text';
+
+				metadataPropertyValue.appendChild(inputElement);
+			}
 
 			propertyDiv.appendChild(metadataPropertyKey);
 			propertyDiv.appendChild(metadataPropertyValue);
@@ -1212,19 +1306,22 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 	// Fill property values into existing DOM elements
 	for (let i = 0; i < template.properties.length; i++) {
 		const property = template.properties[i];
-		const inputElement = document.getElementById(property.name) as HTMLInputElement;
-		if (!inputElement) continue;
+		const element = document.getElementById(property.name) as HTMLElement;
+		if (!element) continue;
 
 		let value = compiledPropertyValues[i];
-		const propertyType = inputElement.getAttribute('data-type') || 'text';
+		const propertyType = element.getAttribute('data-type') || 'text';
 
 		// Apply type-specific parsing
 		value = formatPropertyValue(value, propertyType, property.value);
 
-		if (propertyType === 'checkbox') {
-			inputElement.checked = value === 'true';
+		if (propertyType === 'multitext') {
+			const items = value.split(/,(?![^\[]*\]\])/).map(s => s.trim()).filter(s => s);
+			setMultitextValues(element, items);
+		} else if (propertyType === 'checkbox') {
+			(element as HTMLInputElement).checked = value === 'true';
 		} else {
-			inputElement.value = value;
+			(element as HTMLInputElement).value = value;
 		}
 	}
 
