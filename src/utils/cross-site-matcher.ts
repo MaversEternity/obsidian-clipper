@@ -67,6 +67,26 @@ function noteToTagIndexEntry(note: { filename: string; tags: string[] }, matched
 	};
 }
 
+// Return the filtered tag→entries map for use with mark.js
+export async function getFilteredTagEntries(): Promise<Map<string, TagIndexEntry[]>> {
+	const tagMap = await getObsidianTagMap();
+	if (tagMap.size === 0) return new Map();
+
+	const contextData = await browser.storage.local.get('activeContext');
+	const activeContext = (contextData.activeContext as string) || '';
+
+	const result = new Map<string, TagIndexEntry[]>();
+	for (const [tag, notes] of tagMap) {
+		const filtered = activeContext
+			? notes.filter(n => n.filename.startsWith(activeContext + '/'))
+			: notes;
+		if (filtered.length > 0) {
+			result.set(tag, filtered.map(n => noteToTagIndexEntry(n, tag)));
+		}
+	}
+	return result;
+}
+
 // Find cross-site matches by looking up Obsidian note tags in page text
 export async function findCrossSiteMatches(): Promise<CrossSiteMatch[]> {
 	const tagMap = await getObsidianTagMap();

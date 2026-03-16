@@ -373,6 +373,15 @@ body.obsidian-highlighter-active {
 	}
 }
 
+// Inline cross-site note matches (mark.js)
+note-match {
+	background: rgba(100, 180, 255, 0.2);
+	border-bottom: 2px solid rgba(100, 180, 255, 0.7);
+	border-radius: 2px;
+	cursor: pointer;
+	padding: 1px 0;
+}
+
 // Highlight context menu
 .obsidian-highlight-context-menu {
 	box-sizing: border-box;

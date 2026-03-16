@@ -534,14 +534,8 @@ function closeContextMenu() {
 }
 
 // Handle click on a cross-site match overlay
-function handleCrossSiteOverlayClick(event: Event, entries: TagIndexEntry[]) {
-	event.stopPropagation();
-	event.preventDefault();
-
+export function handleCrossSiteClick(entries: TagIndexEntry[], rect: DOMRect) {
 	closeContextMenu();
-
-	const overlay = event.currentTarget as HTMLElement;
-	const rect = overlay.getBoundingClientRect();
 
 	const menu = document.createElement('div');
 	menu.className = 'obsidian-highlight-context-menu';
@@ -775,8 +769,16 @@ export function createCrossSiteOverlay(rect: DOMRect, entries: TagIndexEntry | T
 	overlay.style.pointerEvents = 'auto';
 	overlay.style.cursor = 'pointer';
 
-	overlay.addEventListener('click', (e) => handleCrossSiteOverlayClick(e, entryArray));
-	overlay.addEventListener('touchend', (e) => handleCrossSiteOverlayClick(e, entryArray));
+	overlay.addEventListener('click', (e) => {
+		e.stopPropagation();
+		e.preventDefault();
+		handleCrossSiteClick(entryArray, overlay.getBoundingClientRect());
+	});
+	overlay.addEventListener('touchend', (e) => {
+		e.stopPropagation();
+		e.preventDefault();
+		handleCrossSiteClick(entryArray, overlay.getBoundingClientRect());
+	});
 
 	document.body.appendChild(overlay);
 }

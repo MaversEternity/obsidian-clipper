@@ -6,8 +6,9 @@ import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
-import { findCrossSiteMatches } from './utils/cross-site-matcher';
-import { createCrossSiteOverlay, removeCrossSiteOverlays, setContentPickerMode } from './utils/highlighter-overlays';
+import { getFilteredTagEntries } from './utils/cross-site-matcher';
+import { removeCrossSiteOverlays, setContentPickerMode, handleCrossSiteClick } from './utils/highlighter-overlays';
+import Mark from 'mark.js';
 
 declare global {
 	interface Window {
@@ -464,54 +465,57 @@ declare global {
 		await refreshCrossSiteMatches();
 	}
 
+	let markInstance: Mark | null = null;
+
 	async function refreshCrossSiteMatches() {
+		// Clean up previous marks
+		if (markInstance) {
+			markInstance.unmark();
+			markInstance = null;
+		}
+		// Also remove any legacy absolute-positioned overlays
 		removeCrossSiteOverlays();
+
 		try {
-			const matches = await findCrossSiteMatches();
-			for (const match of matches) {
-				const range = document.createRange();
-				try {
-					const treeWalker = document.createTreeWalker(match.element, NodeFilter.SHOW_TEXT);
-					let currentOffset = 0;
-					let startNode: Node | null = null;
-					let startNodeOffset = 0;
-					let endNode: Node | null = null;
-					let endNodeOffset = 0;
-					let textNode: Node | null;
+			const tagEntries = await getFilteredTagEntries();
+			if (tagEntries.size === 0) return;
 
-					while ((textNode = treeWalker.nextNode())) {
-						const len = (textNode.textContent || '').length;
-						if (!startNode && currentOffset + len > match.startOffset) {
-							startNode = textNode;
-							startNodeOffset = match.startOffset - currentOffset;
-						}
-						if (currentOffset + len >= match.endOffset) {
-							endNode = textNode;
-							endNodeOffset = match.endOffset - currentOffset;
-							break;
-						}
-						currentOffset += len;
-					}
+			markInstance = new Mark(document.body);
 
-					if (startNode && endNode) {
-						range.setStart(startNode, Math.max(0, startNodeOffset));
-						range.setEnd(endNode, Math.min(endNodeOffset, (endNode.textContent || '').length));
-						const rects = range.getClientRects();
-						for (const rect of Array.from(rects)) {
-							if (rect.width > 0 && rect.height > 0) {
-								createCrossSiteOverlay(rect, match.entries);
-							}
-						}
-					} else {
-						const rect = match.element.getBoundingClientRect();
-						createCrossSiteOverlay(rect, match.entries);
-					}
-				} catch (e) {
-					const rect = match.element.getBoundingClientRect();
-					createCrossSiteOverlay(rect, match.entries);
-				} finally {
-					range.detach();
-				}
+			for (const [tag, entries] of tagEntries) {
+				markInstance.mark(tag, {
+					element: 'note-match',
+					className: '',
+					separateWordSearch: false,
+					acrossElements: true,
+					caseSensitive: false,
+					accuracy: {
+						value: 'exactly',
+						limiters: [',', '.', '!', '?', ':', ';'],
+					},
+					exclude: [
+						'.obsidian-highlight-overlay',
+						'.obsidian-highlighter-menu',
+						'.obsidian-highlight-context-menu',
+						'.obsidian-note-popup',
+						'script',
+						'style',
+						'noscript',
+					],
+					filter: (textNode: Text) => {
+						const parent = textNode.parentElement;
+						if (parent && parent.closest('note-match')) return false;
+						return true;
+					},
+					each: (element: HTMLElement) => {
+						element.addEventListener('click', (e) => {
+							e.stopPropagation();
+							e.preventDefault();
+							const rect = element.getBoundingClientRect();
+							handleCrossSiteClick(entries, rect);
+						});
+					},
+				});
 			}
 		} catch (e) {
 			console.warn('Cross-site highlight matching failed:', e);
