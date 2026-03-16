@@ -508,6 +508,10 @@ declare global {
 						return true;
 					},
 					each: (element: HTMLElement) => {
+						if (!element.shadowRoot) {
+							const shadow = element.attachShadow({ mode: 'open' });
+							shadow.innerHTML = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
+						}
 						element.addEventListener('click', (e) => {
 							e.stopPropagation();
 							e.preventDefault();
