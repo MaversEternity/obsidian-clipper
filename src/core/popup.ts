@@ -16,7 +16,7 @@ import { initializeInterpreter, handleInterpreterUI, collectPromptVariables } fr
 import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
-import { isBlankPage, isValidUrl, isExtensionPage } from '../utils/active-tab-manager';
+import { isBlankPage, isValidUrl, isExtensionPage, isBookViewerPage } from '../utils/active-tab-manager';
 import { memoizeWithExpiration } from '../utils/memoize';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
@@ -215,7 +215,7 @@ async function initializeExtension(tabId: number) {
 			showError('pageCannotBeClipped');
 			return;
 		}
-		if (!isValidUrl(tab.url)) {
+		if (!isValidUrl(tab.url) && !isBookViewerPage(tab.url)) {
 			if (!isExtensionPage(tab.url)) {
 				showError('onlyHttpSupported');
 			}
@@ -255,12 +255,12 @@ function setupMessageListeners() {
 			// Only handle active tab changes if we're in side panel mode, not iframe mode
 			if (!isIframe) {
 				currentTabId = request.tabId;
-				if (request.isValidUrl) {
+				if (request.isValidUrl || request.isBookViewerPage) {
 					if (currentTabId !== undefined) {
 						refreshFields(currentTabId); // Force template check when URL changes
 					}
 				} else if (request.isExtensionPage) {
-					// Extension pages (book-viewer, settings) — skip silently
+					// Extension pages (settings, etc.) — skip silently
 				} else if (request.isBlankPage) {
 					showError(getMessage('pageCannotBeClipped'));
 				} else {
@@ -917,7 +917,7 @@ async function refreshFields(tabId: number, checkTemplateTriggers: boolean = tru
 			showError('pageCannotBeClipped');
 			return;
 		}
-		if (!isValidUrl(tab.url)) {
+		if (!isValidUrl(tab.url) && !isBookViewerPage(tab.url)) {
 			if (!isExtensionPage(tab.url)) {
 				showError('onlyHttpSupported');
 			}

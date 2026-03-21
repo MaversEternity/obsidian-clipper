@@ -325,13 +325,83 @@ document.addEventListener('keydown', (e) => {
 	}
 });
 
-// Handle message from side panel to open a file
-browser.runtime.onMessage.addListener((message: any) => {
+// Handle messages from side panel and background script
+browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void): true | undefined => {
 	if (message.action === 'openPdfFile' && message.data) {
 		state.fileName = message.fileName || 'document.pdf';
 		fileNameEl.textContent = state.fileName;
 		document.title = `${state.fileName} - Book Viewer`;
 		loadPdf(new Uint8Array(message.data));
+		return undefined;
 	}
+
+	if (message.action === 'ping') {
+		sendResponse({ pong: true });
+		return undefined;
+	}
+
+	if (message.action === 'getPageContent') {
+		// Get selected text
+		let selectedHtml = '';
+		const selection = window.getSelection();
+		if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+			const range = selection.getRangeAt(0);
+			const div = document.createElement('div');
+			div.appendChild(range.cloneContents());
+			selectedHtml = div.innerHTML;
+		}
+
+		// Extract visible text from rendered text layers
+		const textLayers = viewer.querySelectorAll('.textLayer');
+		let fullText = '';
+		textLayers.forEach(layer => {
+			const spans = layer.querySelectorAll('span[role="presentation"]');
+			spans.forEach(span => {
+				fullText += (span.textContent || '') + ' ';
+			});
+			fullText += '\n\n';
+		});
+
+		// Get the original PDF URL if loaded via redirect
+		const params = new URLSearchParams(window.location.search);
+		const originalUrl = params.get('url') || window.location.href;
+
+		const response = {
+			author: '',
+			content: `<div>${fullText}</div>`,
+			description: '',
+			domain: '',
+			extractedContent: {},
+			favicon: '',
+			fullHtml: document.documentElement.outerHTML,
+			highlights: [],
+			image: '',
+			language: '',
+			parseTime: 0,
+			published: '',
+			schemaOrgData: null,
+			selectedHtml,
+			site: '',
+			title: state.fileName || document.title,
+			wordCount: fullText.split(/\s+/).filter(Boolean).length,
+			metaTags: [],
+			// Book-viewer specific
+			currentPage: state.currentPage,
+			totalPages: state.totalPages,
+			sourceUrl: originalUrl,
+		};
+
+		sendResponse(response);
+		return undefined;
+	}
+
+	if (message.action === 'extractContent') {
+		const content = message.selector
+			? document.querySelector(message.selector)?.textContent || ''
+			: '';
+		sendResponse({ content });
+		return undefined;
+	}
+
 	return undefined;
 });
