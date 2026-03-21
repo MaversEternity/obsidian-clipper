@@ -42,6 +42,25 @@ export function buildVariables(params: BuildVariablesParams): Record<string, str
 	const noteName = sanitizeFileName(params.title);
 
 	const timestamp = dayjs().format('YYYY-MM-DDTHH:mm:ssZ');
+
+	// Local file metadata
+	let filePath = '';
+	let fileName = '';
+	let pageNumber = '';
+	try {
+		const urlObj = new URL(currentUrl);
+		if (urlObj.protocol === 'file:') {
+			filePath = decodeURIComponent(urlObj.pathname);
+			const lastSlash = filePath.lastIndexOf('/');
+			fileName = lastSlash >= 0 ? filePath.slice(lastSlash + 1) : filePath;
+		}
+		// PDF page number from hash (works for both file:// and http(s)://)
+		const pageMatch = urlObj.hash.match(/[#&]page=(\d+)/);
+		if (pageMatch) {
+			pageNumber = pageMatch[1];
+		}
+	} catch {}
+
 	const variables: Record<string, string> = {
 		'{{author}}': (params.author || '').trim(),
 		'{{content}}': (params.content || '').trim(),
@@ -53,10 +72,13 @@ export function buildVariables(params: BuildVariablesParams): Record<string, str
 		'{{description}}': (params.description || '').trim(),
 		'{{domain}}': getDomain(currentUrl),
 		'{{favicon}}': params.favicon || '',
+		'{{filePath}}': filePath,
+		'{{fileName}}': fileName,
 		'{{fullHtml}}': (params.fullHtml || '').trim(),
 		'{{highlights}}': params.highlights || '',
 		'{{image}}': params.image || '',
 		'{{noteName}}': noteName.trim(),
+		'{{pageNumber}}': pageNumber,
 		'{{published}}': (params.published || '').split(',')[0].trim(),
 		'{{site}}': (params.site || '').trim(),
 		'{{title}}': (params.title || '').trim(),

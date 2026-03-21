@@ -74,6 +74,10 @@ async function ensureContentScriptLoadedInBackground(tabId: number): Promise<voi
 
 		// Check if the URL is valid before proceeding
 		if (!tab.url || !isValidUrl(tab.url)) {
+			// Extension pages (book-viewer, etc.) handle their own scripts — skip silently
+			if (tab.url && tab.url.startsWith(browser.runtime.getURL(''))) {
+				return;
+			}
 			console.log(`Skipping content script injection for invalid URL: ${tab.url}`);
 			throw new Error(`Cannot inject content script into invalid URL: ${tab.url}`);
 		}
@@ -85,7 +89,13 @@ async function ensureContentScriptLoadedInBackground(tabId: number): Promise<voi
 		if (error instanceof Error && error.message.includes('invalid URL')) {
 			throw error;
 		}
-		
+
+		// Extension pages handle their own scripts — don't inject
+		const tab = await browser.tabs.get(tabId);
+		if (tab.url && tab.url.startsWith(browser.runtime.getURL(''))) {
+			return;
+		}
+
 		// If the message fails, the content script is not loaded, so inject it
 		console.log('Content script not loaded, injecting...');
 		try {
@@ -161,7 +171,7 @@ async function sendMessageToPopup(tabId: number, message: any): Promise<void> {
 
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
 	if (typeof request === 'object' && request !== null) {
-		const typedRequest = request as { action: string; isActive?: boolean; hasHighlights?: boolean; tabId?: number; text?: string };
+		const typedRequest = request as { action: string; isActive?: boolean; hasHighlights?: boolean; tabId?: number; text?: string; url?: string };
 		
 		if (typedRequest.action === 'copy-to-clipboard' && typedRequest.text) {
 			// Use content script to copy to clipboard
@@ -360,6 +370,34 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 				sendResponse({success: true});
 			} catch (error) {
 				console.error('Error opening options page:', error);
+				sendResponse({success: false, error: error instanceof Error ? error.message : String(error)});
+			}
+			return true;
+		}
+
+		if (typedRequest.action === "openBookViewer") {
+			try {
+				browser.tabs.create({
+					url: browser.runtime.getURL('book-viewer.html')
+				});
+				sendResponse({success: true});
+			} catch (error) {
+				console.error('Error opening book viewer:', error);
+				sendResponse({success: false, error: error instanceof Error ? error.message : String(error)});
+			}
+			return true;
+		}
+
+		if (typedRequest.action === "openBookViewerForUrl") {
+			try {
+				const pdfUrl = typedRequest.url as string;
+				const viewerUrl = browser.runtime.getURL('book-viewer.html') + '?url=' + encodeURIComponent(pdfUrl);
+				// Replace current tab instead of opening a new one
+				if (sender.tab?.id) {
+					browser.tabs.update(sender.tab.id, { url: viewerUrl });
+				}
+				sendResponse({success: true});
+			} catch (error) {
 				sendResponse({success: false, error: error instanceof Error ? error.message : String(error)});
 			}
 			return true;
@@ -873,12 +911,33 @@ async function isSidePanelOpen(windowId: number): Promise<boolean> {
 	return sidePanelOpenWindows.has(windowId);
 }
 
+// Check if PDF interception is enabled and redirect to book viewer
+async function maybeInterceptPdf(tabId: number, url: string): Promise<boolean> {
+	const { pdfInterceptEnabled } = await browser.storage.local.get('pdfInterceptEnabled');
+	if (!pdfInterceptEnabled) return false;
+
+	// Check if URL points to a PDF (by extension or content-type hint)
+	const urlPath = new URL(url).pathname.toLowerCase();
+	if (!urlPath.endsWith('.pdf')) return false;
+
+	// Don't intercept if already in book-viewer
+	if (url.startsWith(browser.runtime.getURL(''))) return false;
+
+	const viewerUrl = browser.runtime.getURL('book-viewer.html') + '?url=' + encodeURIComponent(url);
+	browser.tabs.update(tabId, { url: viewerUrl });
+	return true;
+}
+
 async function setupTabListeners() {
 	const browserType = await detectBrowser();
 	if (['chrome', 'brave', 'edge'].includes(browserType)) {
 		browser.tabs.onActivated.addListener(handleTabChange);
 		browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 			if (changeInfo.status === 'complete') {
+				// Intercept PDF files and open in book viewer
+				if (tab.url) {
+					maybeInterceptPdf(tabId, tab.url);
+				}
 				handleTabChange({ tabId, windowId: tab.windowId });
 			}
 		});

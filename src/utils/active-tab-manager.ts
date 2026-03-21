@@ -3,6 +3,11 @@ import browser from './browser-polyfill';
 let currentActiveTabId: number | undefined;
 let currentWindowId: number | undefined;
 
+export function isExtensionPage(url: string): boolean {
+	const extOrigin = browser.runtime.getURL('');
+	return url.startsWith(extOrigin);
+}
+
 export async function updateCurrentActiveTab(windowId: number) {
 	const tabs = await browser.tabs.query({ active: true, windowId: windowId });
 	if (tabs[0] && tabs[0].id && tabs[0].url) {
@@ -13,7 +18,8 @@ export async function updateCurrentActiveTab(windowId: number) {
 			tabId: currentActiveTabId,
 			url: tabs[0].url,
 			isValidUrl: isValidUrl(tabs[0].url),
-			isBlankPage: isBlankPage(tabs[0].url)
+			isBlankPage: isBlankPage(tabs[0].url),
+			isExtensionPage: isExtensionPage(tabs[0].url)
 		});
 	}
 }

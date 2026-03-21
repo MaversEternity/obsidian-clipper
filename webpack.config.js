@@ -46,7 +46,9 @@ module.exports = (env, argv) => {
 			style: './src/style.scss',
 			highlighter: './src/highlighter.scss',
 			reader: './src/reader.scss',
-			'reader-script': './src/reader-script.ts'
+			'reader-script': './src/reader-script.ts',
+			'book-viewer': './src/book-viewer.ts',
+			'book-viewer-style': './src/book-viewer.scss'
 		},
 		output: {
 			path: path.resolve(__dirname, outputDir),
@@ -147,6 +149,11 @@ module.exports = (env, argv) => {
 					{ from: "src/icons", to: "icons" },
 					{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
 					{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
+				{ from: "src/book-viewer.html", to: "book-viewer.html" },
+				{ from: "node_modules/pdfjs-dist/build/pdf.worker.min.mjs", to: "pdf.worker.min.mjs" },
+				{ from: "node_modules/pdfjs-dist/web/pdf_viewer.css", to: "pdf_viewer.css" },
+				{ from: "node_modules/pdfjs-dist/cmaps", to: "cmaps" },
+				{ from: "node_modules/pdfjs-dist/standard_fonts", to: "standard_fonts" },
 					{
 						from: 'src/_locales',
 						to: '_locales'

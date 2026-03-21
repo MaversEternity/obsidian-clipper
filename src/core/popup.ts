@@ -16,7 +16,7 @@ import { initializeInterpreter, handleInterpreterUI, collectPromptVariables } fr
 import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
-import { isBlankPage, isValidUrl } from '../utils/active-tab-manager';
+import { isBlankPage, isValidUrl, isExtensionPage } from '../utils/active-tab-manager';
 import { memoizeWithExpiration } from '../utils/memoize';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
@@ -216,7 +216,9 @@ async function initializeExtension(tabId: number) {
 			return;
 		}
 		if (!isValidUrl(tab.url)) {
-			showError('onlyHttpSupported');
+			if (!isExtensionPage(tab.url)) {
+				showError('onlyHttpSupported');
+			}
 			return;
 		}
 
@@ -257,6 +259,8 @@ function setupMessageListeners() {
 					if (currentTabId !== undefined) {
 						refreshFields(currentTabId); // Force template check when URL changes
 					}
+				} else if (request.isExtensionPage) {
+					// Extension pages (book-viewer, settings) — skip silently
 				} else if (request.isBlankPage) {
 					showError(getMessage('pageCannotBeClipped'));
 				} else {
@@ -811,6 +815,14 @@ function setupEventListeners(tabId: number) {
 	if (readerModeButton) {
 		readerModeButton.addEventListener('click', () => toggleReaderMode(tabId));
 	}
+
+	const bookViewerButton = document.getElementById('open-book-viewer');
+	if (bookViewerButton) {
+		bookViewerButton.addEventListener('click', (e) => {
+			e.preventDefault();
+			browser.runtime.sendMessage({ action: 'openBookViewer' });
+		});
+	}
 }
 
 async function initializeUI() {
@@ -906,7 +918,9 @@ async function refreshFields(tabId: number, checkTemplateTriggers: boolean = tru
 			return;
 		}
 		if (!isValidUrl(tab.url)) {
-			showError('onlyHttpSupported');
+			if (!isExtensionPage(tab.url)) {
+				showError('onlyHttpSupported');
+			}
 			return;
 		}
 
