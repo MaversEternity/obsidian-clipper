@@ -78,6 +78,9 @@
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+// Context menu for cross-site matches (shared partial)
+@import 'context-menu';
+
 .error-message {
 	color: #ff6b6b;
 	text-align: center;

@@ -1,9 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { PDFPageView, EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import browser from './utils/browser-polyfill';
-import Mark from 'mark.js';
-import { getFilteredTagEntries } from './utils/cross-site-matcher';
-import { handleCrossSiteClick } from './utils/highlighter-overlays';
+import * as lookup from './utils/lookup';
 
 // Set worker path to bundled worker file
 pdfjsLib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL('pdf.worker.min.mjs');
@@ -136,7 +134,7 @@ async function renderAllPages() {
 
 	// Render visible pages + apply cross-site matching
 	await renderVisiblePages();
-	await applyCrossSiteMatches();
+	await lookup.mark(viewer);
 }
 
 async function renderVisiblePages() {
@@ -161,57 +159,6 @@ async function renderVisiblePages() {
 
 // Debounced scroll handler for lazy rendering
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
-
-// Cross-site matching — runs directly since content scripts can't inject into extension pages
-let markInstance: Mark | null = null;
-
-async function applyCrossSiteMatches() {
-	if (markInstance) {
-		markInstance.unmark();
-		markInstance = null;
-	}
-
-	try {
-		const tagEntries = await getFilteredTagEntries();
-		if (tagEntries.size === 0) return;
-
-		markInstance = new Mark(viewer);
-
-		for (const [tag, entries] of tagEntries) {
-			markInstance.mark(tag, {
-				element: 'note-match',
-				className: '',
-				separateWordSearch: false,
-				acrossElements: true,
-				caseSensitive: false,
-				accuracy: {
-					value: 'exactly',
-					limiters: [',', '.', '!', '?', ':', ';'],
-				},
-				exclude: ['.canvasWrapper'],
-				filter: (textNode: Text) => {
-					const parent = textNode.parentElement;
-					if (parent && parent.closest('note-match')) return false;
-					return true;
-				},
-				each: (element: HTMLElement) => {
-					if (!element.shadowRoot) {
-						const shadow = element.attachShadow({ mode: 'open' });
-						shadow.innerHTML = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
-					}
-					element.addEventListener('click', (e) => {
-						e.stopPropagation();
-						e.preventDefault();
-						const rect = element.getBoundingClientRect();
-						handleCrossSiteClick(entries, rect);
-					});
-				},
-			});
-		}
-	} catch (e) {
-		console.warn('Cross-site matching failed in book viewer:', e);
-	}
-}
 
 function updateControls() {
 	pageInfo.textContent = `${state.totalPages} pages`;
