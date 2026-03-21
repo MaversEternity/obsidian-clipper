@@ -9,6 +9,26 @@ import { loadSettings, generalSettings } from './utils/storage-utils';
 // Set worker path to bundled worker file
 pdfjsLib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL('pdf.worker.min.mjs');
 
+// Parse PDF date format (D:YYYYMMDDHHmmSS) to ISO string
+function parsePdfDate(pdfDate: string): string {
+	if (!pdfDate) return '';
+	const match = pdfDate.match(/D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?/);
+	if (!match) return pdfDate;
+	const [, y, m, d, h = '00', min = '00', s = '00'] = match;
+	return `${y}-${m}-${d}T${h}:${min}:${s}`;
+}
+
+interface PdfMetadata {
+	title: string;
+	author: string;
+	subject: string;
+	keywords: string;
+	creator: string;
+	producer: string;
+	creationDate: string;
+	modDate: string;
+}
+
 interface ViewerState {
 	pdf: pdfjsLib.PDFDocumentProxy | null;
 	currentPage: number;
@@ -16,6 +36,7 @@ interface ViewerState {
 	scale: number;
 	fileName: string;
 	rendering: boolean;
+	metadata: PdfMetadata;
 }
 
 const state: ViewerState = {
@@ -25,6 +46,7 @@ const state: ViewerState = {
 	scale: 1.5,
 	fileName: '',
 	rendering: false,
+	metadata: { title: '', author: '', subject: '', keywords: '', creator: '', producer: '', creationDate: '', modDate: '' },
 };
 
 const viewer = document.getElementById('viewer')!;
@@ -90,6 +112,20 @@ async function loadPdf(data: Uint8Array) {
 
 		state.totalPages = state.pdf.numPages;
 		state.currentPage = 1;
+
+		// Extract PDF metadata
+		const meta = await state.pdf.getMetadata();
+		const info = (meta?.info || {}) as Record<string, any>;
+		state.metadata = {
+			title: info.Title || '',
+			author: info.Author || '',
+			subject: info.Subject || '',
+			keywords: info.Keywords || '',
+			creator: info.Creator || '',
+			producer: info.Producer || '',
+			creationDate: parsePdfDate(info.CreationDate || ''),
+			modDate: parsePdfDate(info.ModDate || ''),
+		};
 
 		updateControls();
 		await renderAllPages();
@@ -343,9 +379,9 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
 		const originalUrl = params.get('url') || window.location.href;
 
 		const response = {
-			author: '',
+			author: state.metadata.author,
 			content: `<div>${fullText}</div>`,
-			description: '',
+			description: state.metadata.subject,
 			domain: '',
 			extractedContent: {},
 			favicon: '',
@@ -354,11 +390,11 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
 			image: '',
 			language: '',
 			parseTime: 0,
-			published: '',
+			published: state.metadata.creationDate,
 			schemaOrgData: null,
 			selectedHtml,
-			site: '',
-			title: state.fileName || document.title,
+			site: state.metadata.creator,
+			title: state.metadata.title || state.fileName || document.title,
 			wordCount: fullText.split(/\s+/).filter(Boolean).length,
 			metaTags: [],
 			// Book-viewer specific
