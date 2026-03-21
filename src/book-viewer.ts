@@ -2,6 +2,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { PDFPageView, EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import browser from './utils/browser-polyfill';
 import * as lookup from './utils/lookup';
+import { handleCrossSiteClick } from './utils/highlighter-overlays';
 
 // Set worker path to bundled worker file
 pdfjsLib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL('pdf.worker.min.mjs');
@@ -134,7 +135,7 @@ async function renderAllPages() {
 
 	// Render visible pages + apply cross-site matching
 	await renderVisiblePages();
-	await lookup.mark(viewer);
+	await lookup.mark(viewer, handleCrossSiteClick);
 }
 
 async function renderVisiblePages() {

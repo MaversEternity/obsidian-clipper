@@ -6,7 +6,7 @@ import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
-import { removeCrossSiteOverlays, setContentPickerMode } from './utils/highlighter-overlays';
+import { removeCrossSiteOverlays, setContentPickerMode, handleCrossSiteClick } from './utils/highlighter-overlays';
 import * as lookup from './utils/lookup';
 
 declare global {
@@ -477,7 +477,7 @@ declare global {
 
 	async function refreshCrossSiteMatches() {
 		removeCrossSiteOverlays();
-		await lookup.mark(document.body);
+		await lookup.mark(document.body, handleCrossSiteClick);
 	}
 
 	// Content picker — reuses the highlighter's UI with picker mode

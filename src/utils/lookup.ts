@@ -1,6 +1,8 @@
 import Mark from 'mark.js';
 import { getFilteredTagEntries } from './cross-site-matcher';
-import { handleCrossSiteClick } from './highlighter-overlays';
+import { TagIndexEntry } from './highlight-tag-index';
+
+export type MatchClickHandler = (entries: TagIndexEntry[], rect: DOMRect) => void;
 
 let markInstances: Mark[] = [];
 
@@ -14,7 +16,7 @@ function getMarkTargets(root: HTMLElement): (HTMLElement | DocumentFragment)[] {
 	return targets;
 }
 
-export async function mark(root: HTMLElement): Promise<void> {
+export async function mark(root: HTMLElement, onClick: MatchClickHandler): Promise<void> {
 	unmark();
 
 	try {
@@ -61,8 +63,7 @@ export async function mark(root: HTMLElement): Promise<void> {
 						element.addEventListener('click', (e) => {
 							e.stopPropagation();
 							e.preventDefault();
-							const rect = element.getBoundingClientRect();
-							handleCrossSiteClick(entries, rect);
+							onClick(entries, element.getBoundingClientRect());
 						});
 					},
 				});

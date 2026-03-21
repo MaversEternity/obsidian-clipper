@@ -3,12 +3,14 @@ import browser from './browser-polyfill';
 let currentActiveTabId: number | undefined;
 let currentWindowId: number | undefined;
 
-export function isExtensionPage(url: string): boolean {
+export function isExtensionPage(url: string | undefined): boolean {
+	if (!url) return false;
 	const extOrigin = browser.runtime.getURL('');
 	return url.startsWith(extOrigin);
 }
 
-export function isBookViewerPage(url: string): boolean {
+export function isBookViewerPage(url: string | undefined): boolean {
+	if (!url) return false;
 	return url.startsWith(browser.runtime.getURL('book-viewer.html'));
 }
 
@@ -29,9 +31,10 @@ export async function updateCurrentActiveTab(windowId: number) {
 	}
 }
 
-export function isValidUrl(url: string): boolean {
-	return url.startsWith('http://') || 
-		   url.startsWith('https://') || 
+export function isValidUrl(url: string | undefined): boolean {
+	if (!url) return false;
+	return url.startsWith('http://') ||
+		   url.startsWith('https://') ||
 		   url.startsWith('file:///');
 }
 
