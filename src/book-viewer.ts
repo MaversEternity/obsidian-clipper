@@ -133,9 +133,9 @@ async function renderAllPages() {
 
 	state.rendering = false;
 
-	// Render visible pages + apply cross-site matching
+	// Render visible pages, fetch tags + set up scroll-based marking
 	await renderVisiblePages();
-	await lookup.mark(viewer, handleCrossSiteClick);
+	await lookup.mark(viewer, handleCrossSiteClick, viewerContainer);
 }
 
 async function renderVisiblePages() {
