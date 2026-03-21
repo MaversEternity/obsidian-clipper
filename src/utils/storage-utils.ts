@@ -12,6 +12,7 @@ export let generalSettings: Settings = {
 	silentOpen: false,
 	openBehavior: 'popup',
 	highlighterEnabled: true,
+	lookupEnabled: true,
 	alwaysShowHighlights: false,
 	highlightBehavior: 'highlight-inline',
 	showMoreActionsButton: false,
@@ -60,6 +61,7 @@ interface StorageData {
 	vaults?: string[];
 	highlighter_settings?: {
 		highlighterEnabled?: boolean;
+		lookupEnabled?: boolean;
 		alwaysShowHighlights?: boolean;
 		highlightBehavior?: string;
 	};
@@ -104,6 +106,7 @@ export async function loadSettings(): Promise<Settings> {
 		silentOpen: false,
 		openBehavior: 'popup',
 		highlighterEnabled: true,
+		lookupEnabled: true,
 		alwaysShowHighlights: true,
 		highlightBehavior: 'highlight-inline',
 		interpreterModel: '',
@@ -157,6 +160,7 @@ export async function loadSettings(): Promise<Settings> {
 			? (data.general_settings.openBehavior ? 'embedded' : 'popup') 
 			: (data.general_settings?.openBehavior ?? defaultSettings.openBehavior),
 		highlighterEnabled: data.highlighter_settings?.highlighterEnabled ?? defaultSettings.highlighterEnabled,
+		lookupEnabled: data.highlighter_settings?.lookupEnabled ?? defaultSettings.lookupEnabled,
 		alwaysShowHighlights: data.highlighter_settings?.alwaysShowHighlights ?? defaultSettings.alwaysShowHighlights,
 		highlightBehavior: data.highlighter_settings?.highlightBehavior ?? defaultSettings.highlightBehavior,
 		interpreterModel: data.interpreter_settings?.interpreterModel || defaultSettings.interpreterModel,
@@ -201,6 +205,7 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 		},
 		highlighter_settings: {
 			highlighterEnabled: generalSettings.highlighterEnabled,
+			lookupEnabled: generalSettings.lookupEnabled,
 			alwaysShowHighlights: generalSettings.alwaysShowHighlights,
 			highlightBehavior: generalSettings.highlightBehavior
 		},

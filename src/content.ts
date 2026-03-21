@@ -477,7 +477,9 @@ declare global {
 
 	async function refreshCrossSiteMatches() {
 		removeCrossSiteOverlays();
-		await lookup.mark(document.body, handleCrossSiteClick);
+		if (generalSettings.lookupEnabled) {
+			await lookup.mark(document.body, handleCrossSiteClick);
+		}
 	}
 
 	// Content picker — reuses the highlighter's UI with picker mode

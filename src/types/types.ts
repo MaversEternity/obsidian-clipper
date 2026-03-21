@@ -68,6 +68,7 @@ export interface Settings {
 	silentOpen: boolean;
 	openBehavior: 'popup' | 'embedded';
 	highlighterEnabled: boolean;
+	lookupEnabled: boolean;
 	alwaysShowHighlights: boolean;
 	highlightBehavior: string;
 	interpreterModel?: string;

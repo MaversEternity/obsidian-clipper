@@ -13,6 +13,7 @@ export const generalSettings: Settings = {
 	silentOpen: false,
 	openBehavior: 'popup',
 	highlighterEnabled: false,
+	lookupEnabled: false,
 	alwaysShowHighlights: false,
 	highlightBehavior: 'no-highlights',
 	showMoreActionsButton: false,

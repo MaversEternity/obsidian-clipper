@@ -255,6 +255,7 @@ function saveSettingsFromForm(): void {
 	const legacyModeToggle = document.getElementById('legacy-mode-toggle') as HTMLInputElement;
 	const silentOpenToggle = document.getElementById('silent-open-toggle') as HTMLInputElement;
 	const highlighterToggle = document.getElementById('highlighter-toggle') as HTMLInputElement;
+	const lookupToggle = document.getElementById('lookup-toggle') as HTMLInputElement;
 	const alwaysShowHighlightsToggle = document.getElementById('highlighter-visibility') as HTMLInputElement;
 	const highlightBehaviorSelect = document.getElementById('highlighter-behavior') as HTMLSelectElement;
 
@@ -266,6 +267,7 @@ function saveSettingsFromForm(): void {
 		legacyMode: legacyModeToggle?.checked ?? generalSettings.legacyMode,
 		silentOpen: silentOpenToggle?.checked ?? generalSettings.silentOpen,
 		highlighterEnabled: highlighterToggle?.checked ?? generalSettings.highlighterEnabled,
+		lookupEnabled: lookupToggle?.checked ?? generalSettings.lookupEnabled,
 		alwaysShowHighlights: alwaysShowHighlightsToggle?.checked ?? generalSettings.alwaysShowHighlights,
 		highlightBehavior: highlightBehaviorSelect?.value ?? generalSettings.highlightBehavior
 	};
@@ -415,6 +417,10 @@ function initializeExportHighlightsButton(): void {
 function initializeHighlighterSettings(): void {
 	initializeSettingToggle('highlighter-toggle', generalSettings.highlighterEnabled, (checked) => {
 		saveSettings({ ...generalSettings, highlighterEnabled: checked });
+	});
+
+	initializeSettingToggle('lookup-toggle', generalSettings.lookupEnabled, (checked) => {
+		saveSettings({ ...generalSettings, lookupEnabled: checked });
 	});
 
 	initializeSettingToggle('highlighter-visibility', generalSettings.alwaysShowHighlights, (checked) => {

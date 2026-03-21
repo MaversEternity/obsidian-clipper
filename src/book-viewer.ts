@@ -3,6 +3,7 @@ import { PDFPageView, EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import browser from './utils/browser-polyfill';
 import * as lookup from './utils/lookup';
 import { handleCrossSiteClick } from './utils/highlighter-overlays';
+import { loadSettings, generalSettings } from './utils/storage-utils';
 
 // Set worker path to bundled worker file
 pdfjsLib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL('pdf.worker.min.mjs');
@@ -135,7 +136,10 @@ async function renderAllPages() {
 
 	// Render visible pages, fetch tags + set up scroll-based marking
 	await renderVisiblePages();
-	await lookup.mark(viewer, handleCrossSiteClick, viewerContainer);
+	await loadSettings();
+	if (generalSettings.lookupEnabled) {
+		await lookup.mark(viewer, handleCrossSiteClick, viewerContainer);
+	}
 }
 
 async function renderVisiblePages() {
