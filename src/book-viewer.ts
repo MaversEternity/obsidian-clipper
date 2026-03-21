@@ -2,7 +2,8 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { PDFPageView, EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import browser from './utils/browser-polyfill';
 import * as lookup from './utils/lookup';
-import { handleCrossSiteClick } from './utils/highlighter-overlays';
+import { handleCrossSiteClick, setContentPickerMode } from './utils/highlighter-overlays';
+import * as highlighter from './utils/highlighter';
 import { loadSettings, generalSettings } from './utils/storage-utils';
 
 // Set worker path to bundled worker file
@@ -289,7 +290,7 @@ browser.runtime.sendMessage({ action: 'getActiveTab' }).then((resp: any) => {
 browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void): true | undefined => {
 	// Only handle messages with _targetTabId matching this tab, or book-viewer-specific actions
 	const isTargetedToMe = message._targetTabId && message._targetTabId === thisTabId;
-	const isBookViewerAction = message.action === 'openPdfFile' || message.action === 'ping';
+	const isBookViewerAction = message.action === 'openPdfFile' || message.action === 'ping' || message.action === 'toggleContentPicker';
 
 	if (!isTargetedToMe && !isBookViewerAction) {
 		return undefined; // Let other listeners handle
@@ -305,6 +306,13 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
 
 	if (message.action === 'ping') {
 		sendResponse({ pong: true });
+		return undefined;
+	}
+
+	if (message.action === 'toggleContentPicker') {
+		setContentPickerMode(message.enabled);
+		highlighter.toggleHighlighterMenu(message.enabled);
+		sendResponse({ success: true });
 		return undefined;
 	}
 

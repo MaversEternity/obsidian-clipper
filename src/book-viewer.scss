@@ -1,3 +1,6 @@
+// Import highlighter styles (normally injected via content_scripts, but extension pages need it explicitly)
+@import './highlighter.scss';
+
 // Only toolbar + viewer layout — everything else from pdf_viewer.css
 
 #toolbar {
