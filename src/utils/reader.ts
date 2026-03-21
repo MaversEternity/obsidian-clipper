@@ -23,6 +23,10 @@ export class Reader {
 	private static originalHTML: string | null = null;
 	private static isActive: boolean = false;
 
+	static isReaderActive(): boolean {
+		return this.isActive;
+	}
+
 	/**
 	 * Helper function to create SVG elements
 	 */

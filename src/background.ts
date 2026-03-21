@@ -304,9 +304,19 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		}
 
 		if (typedRequest.action === "toggleReaderMode" && typedRequest.tabId) {
-			injectReaderScript(typedRequest.tabId).then(() => {
-				browser.tabs.sendMessage(typedRequest.tabId!, { action: "toggleReaderMode" })
-					.then(sendResponse);
+			// Check if this is a book-viewer (extension) page
+			browser.tabs.get(typedRequest.tabId).then(async (tab) => {
+				const extUrl = browser.runtime.getURL('');
+				if (tab.url && tab.url.startsWith(extUrl)) {
+					// Extension page: send via runtime.sendMessage
+					browser.runtime.sendMessage({ action: "toggleReaderMode", _targetTabId: typedRequest.tabId })
+						.then(sendResponse);
+				} else {
+					// Regular page: inject reader script + tabs.sendMessage
+					await injectReaderScript(typedRequest.tabId!);
+					browser.tabs.sendMessage(typedRequest.tabId!, { action: "toggleReaderMode" })
+						.then(sendResponse);
+				}
 			});
 			return true;
 		}
