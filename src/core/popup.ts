@@ -26,7 +26,7 @@ import { formatPropertyValue } from '../utils/shared';
 import { updateNoteContent, fetchVaultDirectories, deleteNote } from '../utils/obsidian-rest-api';
 import '../components/multitext-input';
 import { MultitextInput } from '../components/multitext-input';
-import '../components/note-link-suggest';
+import '../components/markdown-editor';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -282,7 +282,7 @@ function setupMessageListeners() {
 			applyNotePreview(request.noteName, request.noteContent, request.notePath);
 			sendResponse({ success: true });
 		} else if (request.action === "contentPicked") {
-			const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+			const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 			if (noteContentField && request.text) {
 				const quote = `\n\n> ${request.text.replace(/\n/g, '\n> ')}`;
 				noteContentField.value += quote;
@@ -317,7 +317,7 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 		adjustNoteNameHeight(noteNameField);
 	}
 
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	if (noteContentField) {
 		noteContentField.value = body;
 	}
@@ -375,7 +375,7 @@ function applyNotePreview(noteName: string, noteContent: string, notePath: strin
 
 async function handleUpdateNote(): Promise<void> {
 	const noteNameField = document.getElementById('note-name-field') as HTMLTextAreaElement;
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	const mainButton = document.getElementById('clip-btn');
 
 	if (!noteNameField || !noteContentField) return;
@@ -714,7 +714,7 @@ function setupEventListeners(tabId: number, tabUrl?: string) {
 		copyContentButton.addEventListener('click', async () => {
 			const properties = getPropertiesFromDOM();
 
-			const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+			const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 			const frontmatter = await generateFrontmatter(properties);
 			const fileContent = frontmatter + noteContentField.value;
 			
@@ -733,7 +733,7 @@ function setupEventListeners(tabId: number, tabUrl?: string) {
 				// Get content synchronously
 				const properties = getPropertiesFromDOM();
 
-				const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+				const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 				
 				// Use Promise.all to prepare the data
 				Promise.all([
@@ -1186,7 +1186,7 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 		}
 	}
 
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	if (noteContentField) {
 		noteContentField.setAttribute('data-template-value', template.noteContentFormat || '');
 	}
@@ -1269,7 +1269,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 		pathField.value = formattedPath;
 	}
 
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	if (noteContentField) {
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
 	}
@@ -1554,7 +1554,7 @@ async function handleSaveToDownloads() {
 		
 		const properties = getPropertiesFromDOM();
 
-		const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+		const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 		const frontmatter = await generateFrontmatter(properties);
 		const fileContent = frontmatter + noteContentField.value;
 
@@ -1617,7 +1617,7 @@ async function handleClipObsidian(): Promise<void> {
 	if (!currentTemplate) return;
 
 	const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
 	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
 	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
@@ -1737,7 +1737,7 @@ function getActionIcon(actionType: string): string {
 async function copyContent() {
 	const properties = getPropertiesFromDOM();
 
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
 	const frontmatter = await generateFrontmatter(properties);
 	const fileContent = frontmatter + noteContentField.value;
 	await copyToClipboard(fileContent);
