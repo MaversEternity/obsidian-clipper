@@ -21,15 +21,19 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler): Promi
 
 	try {
 		const tagEntries = await getFilteredTagEntries();
+		console.log('[lookup] tags to match:', Array.from(tagEntries.keys()));
+		console.log('[lookup] tag count:', tagEntries.size);
 		if (tagEntries.size === 0) return;
 
 		const targets = getMarkTargets(root);
+		console.log('[lookup] mark targets:', targets.length);
 
 		for (const target of targets) {
 			const instance = new Mark(target as HTMLElement);
 			markInstances.push(instance);
 
 			for (const [tag, entries] of tagEntries) {
+				let matchCount = 0;
 				instance.mark(tag, {
 					element: 'note-match',
 					className: '',
@@ -56,10 +60,16 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler): Promi
 						return true;
 					},
 					each: (element: HTMLElement) => {
+						matchCount++;
+						console.log(`[lookup] matched "${tag}" #${matchCount}:`, element.textContent);
 						if (!element.shadowRoot) {
 							const shadow = element.attachShadow({ mode: 'open' });
 							shadow.innerHTML = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
 						}
+						element.addEventListener('mousedown', (e) => {
+							e.stopPropagation();
+							e.preventDefault();
+						});
 						element.addEventListener('click', (e) => {
 							e.stopPropagation();
 							e.preventDefault();

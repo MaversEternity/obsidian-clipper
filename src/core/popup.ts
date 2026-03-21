@@ -1055,7 +1055,15 @@ async function initializeContextDropdown() {
 			if (name && name.trim()) {
 				const trimmed = name.trim();
 				const placeholder = `${trimmed}/${trimmed}.md`;
-				await updateNoteContent(placeholder, `# ${trimmed}\n`);
+				const result = await updateNoteContent(placeholder, `# ${trimmed}\n`);
+				console.log('[popup] createContext result:', result);
+				if (result.error) {
+					console.error('[popup] createContext failed:', result.error);
+					alert(`Failed to create context: ${result.error}`);
+					const prev = await getLocalStorage('activeContext');
+					contextSelect.value = (prev as string) || '';
+					return;
+				}
 				const option = document.createElement('option');
 				option.value = trimmed;
 				option.textContent = trimmed;
