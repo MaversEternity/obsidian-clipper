@@ -273,8 +273,24 @@ document.addEventListener('keydown', (e) => {
 	}
 });
 
+// Get this tab's ID for message filtering
+let thisTabId: number | null = null;
+browser.runtime.sendMessage({ action: 'getActiveTab' }).then((resp: any) => {
+	if (resp?.tabId) thisTabId = resp.tabId;
+});
+
 // Handle messages from side panel and background script
+// IMPORTANT: Only handle messages explicitly meant for book-viewer.
+// Returning undefined for unrecognized messages lets other listeners (background) handle them.
 browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void): true | undefined => {
+	// Only handle messages with _targetTabId matching this tab, or book-viewer-specific actions
+	const isTargetedToMe = message._targetTabId && message._targetTabId === thisTabId;
+	const isBookViewerAction = message.action === 'openPdfFile' || message.action === 'ping';
+
+	if (!isTargetedToMe && !isBookViewerAction) {
+		return undefined; // Let other listeners handle
+	}
+
 	if (message.action === 'openPdfFile' && message.data) {
 		state.fileName = message.fileName || 'document.pdf';
 		fileNameEl.textContent = state.fileName;

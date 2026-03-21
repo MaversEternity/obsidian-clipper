@@ -62,11 +62,24 @@ interface ContentResponse {
 
 export async function extractPageContent(tabId: number): Promise<ContentResponse | null> {
 	try {
-		const response = await browser.runtime.sendMessage({ 
-			action: "sendMessageToTab", 
-			tabId: tabId, 
-			message: { action: "getPageContent" }
-		}) as ContentResponse;
+		// Check if the tab is a book-viewer (extension page)
+		// Extension pages can't receive tabs.sendMessage — use runtime.sendMessage directly
+		const tabInfo = await browser.runtime.sendMessage({ action: "getTabInfo", tabId }) as { success?: boolean; tab?: { url: string } };
+		const tabUrl = tabInfo?.tab?.url || '';
+		const isBookViewer = tabUrl.startsWith(browser.runtime.getURL('book-viewer.html'));
+		let response: ContentResponse;
+		if (isBookViewer) {
+			response = await browser.runtime.sendMessage({
+				action: "getPageContent",
+				_targetTabId: tabId
+			}) as ContentResponse;
+		} else {
+			response = await browser.runtime.sendMessage({
+				action: "sendMessageToTab",
+				tabId: tabId,
+				message: { action: "getPageContent" }
+			}) as ContentResponse;
+		}
 		if (response && response.content) {
 
 			// Ensure highlights are of the correct type
