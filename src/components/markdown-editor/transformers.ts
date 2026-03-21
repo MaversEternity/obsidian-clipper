@@ -20,7 +20,7 @@ import { WikilinkNode, $createWikilinkNode } from './nodes/WikilinkNode';
 import { HighlightNode, $createHighlightNode } from './nodes/HighlightNode';
 import { $isTextNode, type LexicalNode } from 'lexical';
 
-const WIKILINK_TRANSFORMER: TextMatchTransformer = {
+export const WIKILINK_TRANSFORMER: TextMatchTransformer = {
 	dependencies: [WikilinkNode],
 	export: (node: LexicalNode) => {
 		if (node instanceof WikilinkNode) {
@@ -62,7 +62,6 @@ const HIGHLIGHT_TRANSFORMER: TextMatchTransformer = {
 };
 
 export const OBSIDIAN_TRANSFORMERS = [
-	WIKILINK_TRANSFORMER,
 	HIGHLIGHT_TRANSFORMER,
 	HEADING,
 	QUOTE,

@@ -1,21 +1,24 @@
-import { type LexicalEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $createTextNode } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection } from 'lexical';
+import type { Transformer } from '@lexical/markdown';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, type HeadingTagType } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
 import { createMarkdownEditor, setMarkdown, getMarkdown } from './editor';
-import { fetchVaultNotes } from '../../utils/obsidian-rest-api';
-import { $createWikilinkNode } from './nodes/WikilinkNode';
 import { createToolbar } from './toolbar';
+import { isEditorPlugin, type EditorPlugin, type ToolbarButtonDef } from './plugin-interface';
+
+// Import plugin registrations
+import './plugins/mention';
+import './plugins/link';
+import './plugins/image';
+import './plugins/youtube';
 
 export class MarkdownEditorElement extends HTMLElement {
 	private shadow: ShadowRoot;
 	private editor: LexicalEditor | null = null;
 	private editorRoot: HTMLElement | null = null;
-	private dropdown: HTMLElement | null = null;
-	private notes: string[] = [];
-	private filtered: string[] = [];
-	private selectedIndex = 0;
-	private suggestActive = false;
+	private plugins: EditorPlugin[] = [];
+	private pluginTransformers: Transformer[] = [];
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor() {
@@ -24,17 +27,8 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.patchSelectionForShadowDOM();
 	}
 
-	/**
-	 * Patch selection APIs and events for shadow DOM compatibility with Lexical.
-	 *
-	 * Lexical uses:
-	 * 1. window.getSelection() / document.getSelection() — doesn't see inside shadow DOM
-	 * 2. document 'selectionchange' event — doesn't fire for shadow DOM selections
-	 */
 	private patchSelectionForShadowDOM() {
 		const shadow = this.shadow;
-
-		// Patch getSelection to return shadow DOM selection
 		const origGetSelection = window.getSelection.bind(window);
 		const getShadowSelection = (): Selection | null => {
 			if ('getSelection' in shadow) {
@@ -43,20 +37,31 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			return null;
 		};
-
 		window.getSelection = () => getShadowSelection() || origGetSelection();
-
 		const origDocGetSelection = document.getSelection.bind(document);
 		document.getSelection = () => getShadowSelection() || origDocGetSelection();
-
-		// Forward selectionchange from shadow root to document
-		// Lexical listens for 'selectionchange' on document (line 3010 of Lexical.dev.mjs)
 		shadow.addEventListener('selectionchange', () => {
 			document.dispatchEvent(new Event('selectionchange'));
 		});
 	}
 
 	connectedCallback() {
+		// Discover plugins from child elements
+		this.plugins = Array.from(this.children).filter(isEditorPlugin);
+
+		// Collect plugin contributions
+		const extraNodes: Klass<LexicalNode>[] = [];
+		this.pluginTransformers = [];
+		const pluginButtons: ToolbarButtonDef[] = [];
+
+		for (const plugin of this.plugins) {
+			extraNodes.push(...plugin.getNodes());
+			this.pluginTransformers.push(...plugin.getTransformers());
+			const btn = plugin.getToolbarButton();
+			if (btn) pluginButtons.push(btn);
+		}
+
+		// Styles
 		const style = document.createElement('style');
 		style.textContent = `
 			:host { display: flex; flex-grow: 1; position: relative; }
@@ -99,7 +104,7 @@ export class MarkdownEditorElement extends HTMLElement {
 				display: flex; align-items: center; gap: 1px;
 				padding: 4px var(--popup-padding, 12px);
 				border-bottom: 1px solid var(--divider-color);
-				flex-shrink: 0;
+				flex-shrink: 0; flex-wrap: wrap;
 			}
 			.toolbar-btn {
 				display: flex; align-items: center; justify-content: center;
@@ -125,6 +130,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		`;
 		this.shadow.appendChild(style);
 
+		// Build UI
 		const container = document.createElement('div');
 		container.className = 'editor-container';
 
@@ -133,15 +139,25 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.editorRoot.contentEditable = 'true';
 		this.editorRoot.dataset.placeholder = this.getAttribute('placeholder') || '';
 
-		const toolbar = createToolbar((action) => this.handleToolbarAction(action));
+		const toolbar = createToolbar((action) => this.handleToolbarAction(action), pluginButtons);
 		container.appendChild(toolbar);
 		container.appendChild(this.editorRoot);
 		this.shadow.appendChild(container);
 
-		this.editor = createMarkdownEditor(this.editorRoot);
+		// Create editor with plugin nodes and transformers
+		this.editor = createMarkdownEditor({
+			rootElement: this.editorRoot,
+			extraNodes,
+			extraTransformers: this.pluginTransformers,
+		});
+
+		// Attach plugins
+		for (const plugin of this.plugins) {
+			plugin.attach(this.editor, this.shadow);
+		}
 
 		// Dispatch change events (debounced)
-		this.editor.registerUpdateListener(({ editorState }) => {
+		this.editor.registerUpdateListener(() => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
 			this.debounceTimer = setTimeout(() => {
 				this.dispatchEvent(new Event('input', { bubbles: true }));
@@ -149,14 +165,10 @@ export class MarkdownEditorElement extends HTMLElement {
 			}, 150);
 		});
 
-		// Listen for [[ to trigger wikilink suggest
-		this.editorRoot.addEventListener('keydown', this.onKeydown);
-		this.editor.registerTextContentListener(this.onTextChange);
-
-		// Load initial value from attribute
+		// Load initial value
 		const initialValue = this.getAttribute('value');
 		if (initialValue) {
-			setMarkdown(this.editor, initialValue);
+			setMarkdown(this.editor, initialValue, this.pluginTransformers);
 		}
 	}
 
@@ -207,203 +219,23 @@ export class MarkdownEditorElement extends HTMLElement {
 
 	disconnectedCallback() {
 		if (this.debounceTimer) clearTimeout(this.debounceTimer);
-		this.closeSuggest();
+		for (const plugin of this.plugins) {
+			plugin.detach();
+		}
 	}
 
 	get value(): string {
 		if (!this.editor) return '';
-		return getMarkdown(this.editor);
+		return getMarkdown(this.editor, this.pluginTransformers);
 	}
 
 	set value(md: string) {
 		if (!this.editor) return;
-		setMarkdown(this.editor, md);
+		setMarkdown(this.editor, md, this.pluginTransformers);
 	}
 
 	focus() {
 		this.editorRoot?.focus();
-	}
-
-	// Wikilink suggest
-	private onTextChange = (text: string) => {
-		if (!this.editor) return;
-
-		this.editor.getEditorState().read(() => {
-			const selection = $getSelection();
-			if (!$isRangeSelection(selection)) {
-				this.closeSuggest();
-				return;
-			}
-
-			const anchor = selection.anchor;
-			const anchorNode = anchor.getNode();
-			const textContent = anchorNode.getTextContent();
-			const offset = anchor.offset;
-			const before = textContent.slice(0, offset);
-			const triggerIdx = before.lastIndexOf('[[');
-
-			if (triggerIdx === -1 || before.indexOf(']]', triggerIdx) !== -1) {
-				this.closeSuggest();
-				return;
-			}
-
-			const query = before.slice(triggerIdx + 2);
-			if (query.includes('\n')) {
-				this.closeSuggest();
-				return;
-			}
-
-			this.openSuggest(query);
-		});
-	};
-
-	private async openSuggest(query: string) {
-		if (this.notes.length === 0) {
-			const result = await fetchVaultNotes();
-			if (result.error || result.notes.length === 0) {
-				this.closeSuggest();
-				return;
-			}
-			this.notes = result.notes;
-		}
-
-		const q = query.toLowerCase();
-		this.filtered = this.notes
-			.filter(n => n.replace(/\.md$/, '').toLowerCase().includes(q))
-			.slice(0, 20);
-		this.selectedIndex = 0;
-
-		if (this.filtered.length > 0) {
-			this.showDropdown();
-		} else {
-			this.closeSuggest();
-		}
-	}
-
-	private showDropdown() {
-		if (!this.dropdown) {
-			this.dropdown = document.createElement('div');
-			this.dropdown.className = 'dropdown';
-			this.shadow.querySelector('.editor-container')!.appendChild(this.dropdown);
-		}
-
-		this.dropdown.innerHTML = '';
-		this.filtered.forEach((note, i) => {
-			const item = document.createElement('div');
-			item.className = 'item' + (i === this.selectedIndex ? ' is-selected' : '');
-
-			const notePath = note.replace(/\.md$/, '');
-			const lastSlash = notePath.lastIndexOf('/');
-			const name = lastSlash >= 0 ? notePath.slice(lastSlash + 1) : notePath;
-			const folder = lastSlash >= 0 ? notePath.slice(0, lastSlash) : '';
-
-			const nameEl = document.createElement('span');
-			nameEl.className = 'name';
-			nameEl.textContent = name;
-			item.appendChild(nameEl);
-
-			if (folder) {
-				const pathEl = document.createElement('span');
-				pathEl.className = 'path';
-				pathEl.textContent = folder;
-				item.appendChild(pathEl);
-			}
-
-			item.addEventListener('mousedown', (e) => {
-				e.preventDefault();
-				this.selectNote(note);
-			});
-			item.addEventListener('mouseenter', () => {
-				this.selectedIndex = i;
-				this.updateDropdownSelection();
-			});
-
-			this.dropdown!.appendChild(item);
-		});
-
-		this.suggestActive = true;
-	}
-
-	private updateDropdownSelection() {
-		if (!this.dropdown) return;
-		const items = this.dropdown.querySelectorAll('.item');
-		items.forEach((item, i) => {
-			item.classList.toggle('is-selected', i === this.selectedIndex);
-		});
-		items[this.selectedIndex]?.scrollIntoView({ block: 'nearest' });
-	}
-
-	private selectNote(note: string) {
-		if (!this.editor) return;
-
-		const notePath = note.replace(/\.md$/, '');
-		const lastSlash = notePath.lastIndexOf('/');
-		const name = lastSlash >= 0 ? notePath.slice(lastSlash + 1) : notePath;
-		const alias = lastSlash >= 0 ? name : undefined;
-
-		this.editor.update(() => {
-			const selection = $getSelection();
-			if (!$isRangeSelection(selection)) return;
-
-			const anchor = selection.anchor;
-			const anchorNode = anchor.getNode();
-			const textContent = anchorNode.getTextContent();
-			const offset = anchor.offset;
-			const before = textContent.slice(0, offset);
-			const triggerIdx = before.lastIndexOf('[[');
-
-			if (triggerIdx === -1) return;
-
-			// Remove the [[ trigger text and replace with wikilink node
-			const beforeTrigger = textContent.slice(0, triggerIdx);
-			const after = textContent.slice(offset);
-
-			const wikilinkNode = $createWikilinkNode(notePath, alias);
-
-			if (beforeTrigger || after) {
-				const beforeNode = $createTextNode(beforeTrigger);
-				const afterNode = $createTextNode(after);
-				anchorNode.replace(beforeNode);
-				beforeNode.insertAfter(wikilinkNode);
-				wikilinkNode.insertAfter(afterNode);
-				afterNode.select(0, 0);
-			} else {
-				anchorNode.replace(wikilinkNode);
-				wikilinkNode.selectNext();
-			}
-		});
-
-		this.closeSuggest();
-	}
-
-	private onKeydown = (e: KeyboardEvent) => {
-		if (!this.suggestActive || !this.dropdown) return;
-
-		if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			this.selectedIndex = Math.min(this.selectedIndex + 1, this.filtered.length - 1);
-			this.updateDropdownSelection();
-		} else if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-			this.updateDropdownSelection();
-		} else if (e.key === 'Enter' || e.key === 'Tab') {
-			if (this.filtered.length > 0) {
-				e.preventDefault();
-				this.selectNote(this.filtered[this.selectedIndex]);
-			}
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			this.closeSuggest();
-		}
-	};
-
-	private closeSuggest() {
-		if (this.dropdown) {
-			this.dropdown.remove();
-			this.dropdown = null;
-		}
-		this.suggestActive = false;
 	}
 
 	static get observedAttributes() {
