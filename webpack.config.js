@@ -152,6 +152,7 @@ module.exports = (env, argv) => {
 				{ from: "src/book-viewer.html", to: "book-viewer.html" },
 				{ from: "node_modules/pdfjs-dist/build/pdf.worker.min.mjs", to: "pdf.worker.min.mjs" },
 				{ from: "node_modules/pdfjs-dist/web/pdf_viewer.css", to: "pdf_viewer.css" },
+			{ from: "node_modules/pdfjs-dist/web/images/loading-icon.gif", to: "images/loading-icon.gif" },
 				{ from: "node_modules/pdfjs-dist/cmaps", to: "cmaps" },
 				{ from: "node_modules/pdfjs-dist/standard_fonts", to: "standard_fonts" },
 					{

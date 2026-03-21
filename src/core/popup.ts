@@ -614,7 +614,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 				updateVaultDropdown(loadedSettings.vaults);
 				await initializeContextDropdown();
 				populateTemplateDropdown();
-				setupEventListeners(currentTabId);
+				setupEventListeners(currentTabId, tab.url);
 				await initializeUI();
 
 				determineMainAction();
@@ -655,7 +655,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 	}
 });
 
-function setupEventListeners(tabId: number) {
+function setupEventListeners(tabId: number, tabUrl?: string) {
 	const templateDropdown = document.getElementById('template-select') as HTMLSelectElement;
 	if (templateDropdown) {
 		templateDropdown.addEventListener('change', function(this: HTMLSelectElement) {
@@ -813,7 +813,13 @@ function setupEventListeners(tabId: number) {
 
 	const readerModeButton = document.getElementById('reader-mode');
 	if (readerModeButton) {
-		readerModeButton.addEventListener('click', () => toggleReaderMode(tabId));
+		if (tabUrl && isBookViewerPage(tabUrl)) {
+			readerModeButton.classList.add('disabled');
+			readerModeButton.setAttribute('disabled', 'true');
+			readerModeButton.title = 'Reader mode is not available in PDF viewer';
+		} else {
+			readerModeButton.addEventListener('click', () => toggleReaderMode(tabId));
+		}
 	}
 
 	const bookViewerButton = document.getElementById('open-book-viewer');

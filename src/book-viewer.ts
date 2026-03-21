@@ -5,7 +5,6 @@ import * as lookup from './utils/lookup';
 import { handleCrossSiteClick, setContentPickerMode } from './utils/highlighter-overlays';
 import * as highlighter from './utils/highlighter';
 import { loadSettings, generalSettings } from './utils/storage-utils';
-import { Reader } from './utils/reader';
 
 // Set worker path to bundled worker file
 pdfjsLib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL('pdf.worker.min.mjs');
@@ -347,23 +346,9 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
 	}
 
 	if (message.action === 'toggleReaderMode') {
-		(async () => {
-			try {
-				if (Reader.isReaderActive()) {
-					// Reload page to restore book-viewer (restore would destroy JS state)
-					sendResponse({ success: true, isActive: false });
-					window.location.reload();
-					return;
-				}
-				const isActive = await Reader.toggle(document);
-				document.documentElement.classList.toggle('obsidian-reader-active', isActive);
-				sendResponse({ success: true, isActive });
-			} catch (error: unknown) {
-				console.error('Error toggling reader mode:', error);
-				sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
-			}
-		})();
-		return true; // async response
+		// Reader mode is not supported in book-viewer — it already IS a reader
+		sendResponse({ success: false, error: 'Reader mode is not available for the PDF viewer' });
+		return undefined;
 	}
 
 	if (message.action === 'toggleContentPicker') {
