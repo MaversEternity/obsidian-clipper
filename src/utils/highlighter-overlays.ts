@@ -13,6 +13,7 @@ import {
 	updateHighlightTags,
 } from './highlighter';
 import { throttle } from './throttle';
+import { createMarkdownContent } from 'defuddle/full';
 import { getElementByXPath, isDarkColor } from './dom-utils';
 import { TagIndexEntry } from './highlight-tag-index';
 import { showNotePopup } from './highlight-note-popup';
@@ -87,67 +88,23 @@ export function handleMouseUp(event: MouseEvent | TouchEvent) {
 	const selection = window.getSelection();
 
 	if (contentPickerMode) {
-		// In picker mode, send content to popup with type info
+		// In picker mode, convert HTML to markdown preserving formatting
 		let markdown = '';
 		if (selection && !selection.isCollapsed) {
-			const text = selection.toString().trim();
-			if (text) markdown = text;
+			// Get HTML from selection range
+			const range = selection.getRangeAt(0);
+			const container = document.createElement('div');
+			container.appendChild(range.cloneContents());
+			markdown = createMarkdownContent(container.innerHTML, document.URL);
 			selection.removeAllRanges();
 		} else {
 			const block = target.closest('p, h1, h2, h3, h4, h5, h6, li, ul, ol, pre, blockquote, td, th, figcaption, table, img, a, figure');
 			if (block) {
-				const tag = block.tagName.toLowerCase();
-				const text = (block.textContent || '').trim();
-				if (tag === 'img') {
-					const img = block as HTMLImageElement;
-					markdown = `![${img.alt || ''}](${img.src})`;
-				} else if (tag === 'figure') {
-					const img = block.querySelector('img');
-					const caption = block.querySelector('figcaption');
-					if (img) markdown = `![${caption?.textContent?.trim() || img.alt || ''}](${img.src})`;
-					else markdown = text;
-				} else if (tag === 'a') {
-					const a = block as HTMLAnchorElement;
-					markdown = `[${text}](${a.href})`;
-				} else if (tag === 'table') {
-					const rows = Array.from(block.querySelectorAll('tr'));
-					const lines: string[] = [];
-					rows.forEach((row, i) => {
-						const cells = Array.from(row.querySelectorAll('td, th')).map(c => (c.textContent || '').trim().replace(/\|/g, '\\|'));
-						lines.push('| ' + cells.join(' | ') + ' |');
-						if (i === 0) lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
-					});
-					markdown = lines.join('\n');
-				} else if (tag === 'pre') {
-					const code = block.querySelector('code');
-					const lang = code?.className.match(/language-(\w+)/)?.[1] || '';
-					markdown = '```' + lang + '\n' + text + '\n```';
-				} else if (tag === 'blockquote') {
-					markdown = text.split('\n').map(l => '> ' + l).join('\n');
-				} else if (tag.match(/^h[1-6]$/)) {
-					const level = parseInt(tag[1]);
-					markdown = '#'.repeat(level) + ' ' + text;
-				} else if (tag === 'li') {
-					const parent = block.parentElement;
-					if (parent?.tagName === 'OL') {
-						const idx = Array.from(parent.children).indexOf(block) + 1;
-						markdown = `${idx}. ${text}`;
-					} else {
-						markdown = `- ${text}`;
-					}
-				} else if (tag === 'ul' || tag === 'ol') {
-					const items = Array.from(block.querySelectorAll(':scope > li'));
-					markdown = items.map((li, i) => {
-						const t = (li.textContent || '').trim();
-						return tag === 'ol' ? `${i + 1}. ${t}` : `- ${t}`;
-					}).join('\n');
-				} else {
-					markdown = text;
-				}
+				markdown = createMarkdownContent(block.outerHTML, document.URL);
 			}
 		}
-		if (markdown) {
-			browser.runtime.sendMessage({ action: 'contentPicked', markdown });
+		if (markdown.trim()) {
+			browser.runtime.sendMessage({ action: 'contentPicked', markdown: markdown.trim() });
 		}
 		return;
 	}

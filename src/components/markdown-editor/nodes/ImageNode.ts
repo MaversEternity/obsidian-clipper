@@ -58,14 +58,16 @@ export class ImageNode extends DecoratorNode<HTMLElement> {
 			CLICK_COMMAND,
 			(event: MouseEvent) => {
 				const target = event.target as HTMLElement;
-				if (target.tagName === 'IMG' && target.classList.contains('editor-image')) {
-					const node = $getNearestNodeFromDOMNode(target);
-					if (node && node instanceof ImageNode) {
-						const nodeSelection = $createNodeSelection();
-						nodeSelection.add(node.getKey());
-						$setSelection(nodeSelection);
-						return true;
-					}
+				const wrapper = target.closest('.editor-image-wrapper, .editor-image-card');
+				if (!wrapper) return false;
+
+				const decoratorEl = wrapper.closest('[data-lexical-decorator]') || wrapper;
+				const node = $getNearestNodeFromDOMNode(decoratorEl);
+				if (node && node instanceof ImageNode) {
+					const nodeSelection = $createNodeSelection();
+					nodeSelection.add(node.getKey());
+					$setSelection(nodeSelection);
+					return true;
 				}
 				return false;
 			},
