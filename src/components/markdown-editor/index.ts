@@ -122,68 +122,109 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			.toolbar-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+			/* === Table === */
 			.editor-root table {
 				border-collapse: collapse; width: calc(100% - 40px); margin: 1em 20px;
-				-webkit-user-drag: none;
-				font-size: var(--font-ui-small);
+				-webkit-user-drag: none; font-size: var(--font-ui-small);
+				position: relative;
 			}
 			.editor-root th, .editor-root td {
 				border: 1px solid var(--divider-color); padding: 8px 12px;
-				text-align: left; min-width: 60px;
+				text-align: left; min-width: 60px; position: relative;
 			}
-			.editor-root th {
-				background: var(--background-secondary); font-weight: 600;
-			}
+			.editor-root th { background: var(--background-secondary); font-weight: 600; }
 			.editor-root td { background: transparent; }
 			.editor-root td p, .editor-root th p { margin: 0; }
-			/* Table helper buttons */
-			.table-helper-btn {
+
+			/* Row/col selection highlight */
+			.editor-root tr.table-row-selected td,
+			.editor-root tr.table-row-selected th {
+				box-shadow: inset 0 0 0 2px var(--interactive-accent);
+				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.08);
+			}
+			.editor-root td.table-col-selected,
+			.editor-root th.table-col-selected {
+				box-shadow: inset 0 0 0 2px var(--interactive-accent);
+				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.08);
+			}
+
+			/* --- Helper buttons: positioned via CSS custom props set by JS --- */
+			.table-helpers {
 				position: absolute; z-index: 10;
-				display: none; align-items: center; justify-content: center;
+				pointer-events: none;
+				/* Dimensions match the active table, set via --t-top/left/width/height */
+				top: var(--t-top); left: var(--t-left);
+				width: var(--t-width); height: var(--t-height);
+			}
+
+			/* Add row — bottom edge */
+			.table-add-row {
+				position: absolute; pointer-events: auto;
+				bottom: -18px; left: 0; width: 100%; height: 18px;
+				display: flex; align-items: center; justify-content: center;
 				background: var(--background-secondary); border: 1px solid var(--divider-color);
-				color: var(--text-faint); cursor: pointer;
-				font-size: 14px; font-weight: 500; padding: 0;
+				border-top: none; border-radius: 0 0 4px 4px;
+				color: var(--text-faint); cursor: pointer; font-size: 14px;
+				opacity: 0; transition: opacity 0.15s ease;
 			}
-			.table-helper-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-			.table-add-row { height: 18px; border-radius: 0 0 4px 4px; border-top: none; }
-			.table-add-col { width: 18px; border-radius: 0 4px 4px 0; border-left: none; }
-			.table-drag-handle {
-				position: absolute; z-index: 10;
-				display: none; align-items: center; justify-content: center;
-				color: var(--text-faint); cursor: grab; font-size: 10px;
-				border-radius: var(--radius-s); user-select: none;
+
+			/* Add col — right edge */
+			.table-add-col {
+				position: absolute; pointer-events: auto;
+				top: 0; right: -18px; width: 18px; height: 100%;
+				display: flex; align-items: center; justify-content: center;
+				background: var(--background-secondary); border: 1px solid var(--divider-color);
+				border-left: none; border-radius: 0 4px 4px 0;
+				color: var(--text-faint); cursor: pointer; font-size: 14px;
+				opacity: 0; transition: opacity 0.15s ease;
 			}
-			.table-drag-handle:hover { color: var(--text-muted); background: var(--background-modifier-hover); }
-			.table-drag-handle:active { cursor: grabbing; }
-			.table-drag-row { width: 18px; }
-			.table-drag-col { height: 18px; }
-			.editor-root tr.table-row-dragging td,
-			.editor-root tr.table-row-dragging th {
-				outline: 2px solid var(--interactive-accent);
-				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
+
+			/* Row handle — left of hovered row */
+			.table-row-handle {
+				position: absolute; pointer-events: auto;
+				left: -22px; width: 20px;
+				top: var(--rh-top); height: var(--rh-height);
+				display: flex; flex-direction: column; align-items: center; justify-content: center;
+				gap: 0; opacity: 0; transition: opacity 0.15s ease;
 			}
-			.editor-root td.table-col-dragging,
-			.editor-root th.table-col-dragging {
-				outline: 2px solid var(--interactive-accent);
-				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
+
+			/* Col handle — above hovered col */
+			.table-col-handle {
+				position: absolute; pointer-events: auto;
+				top: -22px; height: 20px;
+				left: var(--ch-left); width: var(--ch-width);
+				display: flex; align-items: center; justify-content: center;
+				gap: 0; opacity: 0; transition: opacity 0.15s ease;
 			}
-			/* Drop indicators — purple border on insertion side */
-			.editor-root tr.drop-before td,
-			.editor-root tr.drop-before th {
-				border-top: 3px solid var(--interactive-accent);
+
+			/* Show helpers on table hover */
+			.table-helpers[data-visible] .table-add-row,
+			.table-helpers[data-visible] .table-add-col { opacity: 1; }
+			.table-helpers[data-visible] .table-row-handle,
+			.table-helpers[data-visible] .table-col-handle { opacity: 0.6; }
+			.table-helpers[data-visible] .table-row-handle:hover,
+			.table-helpers[data-visible] .table-col-handle:hover { opacity: 1; }
+
+			/* Hover accents */
+			.table-add-row:hover, .table-add-col:hover {
+				background: var(--background-modifier-hover); color: var(--text-normal);
 			}
-			.editor-root tr.drop-after td,
-			.editor-root tr.drop-after th {
-				border-bottom: 3px solid var(--interactive-accent);
+
+			/* Arrow buttons inside handles */
+			.handle-arrow {
+				display: flex; align-items: center; justify-content: center;
+				border: none; background: transparent; color: var(--text-faint);
+				cursor: pointer; padding: 0; font-size: 7px;
+				width: 16px; height: 12px; border-radius: var(--radius-s);
+				transition: background 0.1s ease, color 0.1s ease;
 			}
-			.editor-root td.drop-before,
-			.editor-root th.drop-before {
-				border-left: 3px solid var(--interactive-accent);
+			.handle-arrow:hover { background: var(--interactive-accent); color: var(--text-on-accent); }
+			.handle-arrow:disabled { opacity: 0.3; pointer-events: none; }
+			.handle-grip {
+				font-size: 10px; color: var(--text-faint); cursor: pointer;
+				line-height: 1;
 			}
-			.editor-root td.drop-after,
-			.editor-root th.drop-after {
-				border-right: 3px solid var(--interactive-accent);
-			}
+			.handle-grip:hover { color: var(--text-normal); }
 			.tok-comment { color: var(--text-faint); font-style: italic; }
 			.tok-keyword { color: var(--text-accent); }
 			.tok-string { color: var(--color-green, #a3be8c); }
