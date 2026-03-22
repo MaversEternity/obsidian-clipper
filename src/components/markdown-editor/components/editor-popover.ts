@@ -262,10 +262,12 @@ export class EditorPopover extends HTMLElement {
 		if (this.onKeydown) {
 			document.removeEventListener('keydown', this.onKeydown);
 		}
-		// Restore focus: click the anchor element to re-trigger Lexical's selection
+		// Restore focus via anchor element
 		if (this.anchor) {
 			this.editor?.getRootElement()?.focus();
-			this.anchor.click();
+			// Use mousedown instead of click to avoid <a> navigation
+			this.anchor.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+			this.anchor.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 			this.anchor.scrollIntoView({ block: 'nearest' });
 		} else {
 			this.editor?.getRootElement()?.focus();

@@ -401,6 +401,18 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 
 	private async showTableDialog() {
 		if (!this.editor || !this.hostShadow) return;
+		// If inside a table, remove it
+		if (this.activeTable) {
+			const table = this.activeTable;
+			this.editor.update(() => {
+				const tableNode = this.findTableNode(table);
+				if (tableNode) {
+					tableNode.remove();
+					this.hide();
+				}
+			});
+			return;
+		}
 		const popover = new EditorPopover();
 		this.hostShadow.appendChild(popover);
 		const result = await popover.show({

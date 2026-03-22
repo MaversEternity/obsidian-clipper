@@ -257,6 +257,7 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 			],
 			submitLabel: 'Save',
 			editor: this.editor || undefined,
+			anchor: linkEl,
 		});
 
 		const capturedKey = nodeKey;
@@ -276,8 +277,6 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 				}
 			});
 		}
-
-		this.editor.getRootElement()?.focus();
 	}
 
 	private removeLink() {
@@ -299,29 +298,57 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 		if (!this.editor || !this.hostShadow) return;
 
 		let selectedText = '';
+		let existingUrl = '';
+		let existingKey: string | null = null;
+		let anchorDom: HTMLElement | null = null;
+
 		this.editor.getEditorState().read(() => {
 			const selection = $getSelection();
-			if ($isRangeSelection(selection)) {
-				selectedText = selection.getTextContent();
+			if (!$isRangeSelection(selection)) return;
+			selectedText = selection.getTextContent();
+			// Check if cursor is inside a link
+			const node = selection.anchor.getNode();
+			const parent = node.getParent();
+			const linkNode = $isLinkNode(parent) ? parent : $isLinkNode(node) ? node : null;
+			if (linkNode && $isLinkNode(linkNode)) {
+				existingUrl = linkNode.getURL();
+				selectedText = linkNode.getTextContent();
+				existingKey = linkNode.getKey();
+				anchorDom = this.editor!.getElementByKey(existingKey!);
 			}
 		});
 
+		const isEditing = !!existingKey;
 		const popover = new EditorPopover();
 		const container = this.hostShadow.querySelector('.editor-container');
 		container?.appendChild(popover);
 
 		const result = await popover.show({
-			title: 'Insert Link',
+			title: isEditing ? 'Edit Link' : 'Insert Link',
 			fields: [
 				{ name: 'text', label: 'Text', placeholder: 'Link text', value: selectedText },
-				{ name: 'url', label: 'Link', placeholder: 'https://', required: true },
+				{ name: 'url', label: 'Link', placeholder: 'https://', value: existingUrl, required: true },
 			],
-			submitLabel: 'Insert',
+			submitLabel: isEditing ? 'Update' : 'Insert',
 			editor: this.editor || undefined,
+			anchor: anchorDom || undefined,
 		});
 
 		if (result && result.url) {
-			this.insertLink(result.text || result.url, result.url);
+			if (isEditing && existingKey) {
+				this.editor.update(() => {
+					const linkNode = $getNodeByKey(existingKey!);
+					if (!linkNode || !$isLinkNode(linkNode)) return;
+					linkNode.setURL(result.url);
+					if (result.text && result.text !== linkNode.getTextContent()) {
+						const children = linkNode.getChildren();
+						for (const child of children) child.remove();
+						linkNode.append($createTextNode(result.text));
+					}
+				});
+			} else {
+				this.insertLink(result.text || result.url, result.url);
+			}
 		}
 	}
 
