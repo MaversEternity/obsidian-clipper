@@ -14,6 +14,7 @@ import { registerHistory, createEmptyHistoryState } from '@lexical/history';
 import { obsidianTheme } from './theme';
 import { OBSIDIAN_TRANSFORMERS } from './transformers';
 import { HighlightNode } from './nodes/HighlightNode';
+import { FootnoteRefNode } from './nodes/FootnoteNodes';
 
 const BASE_NODES: Klass<LexicalNode>[] = [
 	HeadingNode,
@@ -25,6 +26,7 @@ const BASE_NODES: Klass<LexicalNode>[] = [
 	LinkNode,
 	AutoLinkNode,
 	HighlightNode,
+	FootnoteRefNode,
 ];
 
 export interface EditorConfig {

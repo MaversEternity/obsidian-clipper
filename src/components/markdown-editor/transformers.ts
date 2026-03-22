@@ -1,4 +1,5 @@
-import type { TextMatchTransformer, ElementTransformer } from '@lexical/markdown';
+import type { TextMatchTransformer, ElementTransformer, Transformer } from '@lexical/markdown';
+import type { ElementNode } from 'lexical';
 import {
 	BOLD_ITALIC_STAR,
 	BOLD_ITALIC_UNDERSCORE,
@@ -18,7 +19,8 @@ import {
 } from '@lexical/markdown';
 import { WikilinkNode, $createWikilinkNode } from './nodes/WikilinkNode';
 import { HighlightNode, $createHighlightNode } from './nodes/HighlightNode';
-import { $isTextNode, type LexicalNode } from 'lexical';
+import { $isTextNode, $createTextNode, type LexicalNode } from 'lexical';
+import { FootnoteRefNode, $createFootnoteRefNode, $isFootnoteRefNode } from './nodes/FootnoteNodes';
 
 export const WIKILINK_TRANSFORMER: TextMatchTransformer = {
 	dependencies: [WikilinkNode],
@@ -61,7 +63,26 @@ const HIGHLIGHT_TRANSFORMER: TextMatchTransformer = {
 	type: 'text-match',
 };
 
-export const OBSIDIAN_TRANSFORMERS = [
+// Footnote reference: [^1] → superscript inline
+const FOOTNOTE_REF_TRANSFORMER: TextMatchTransformer = {
+	dependencies: [FootnoteRefNode],
+	export: (node: LexicalNode) => {
+		if ($isFootnoteRefNode(node)) return `[^${node.getFootnoteId()}]`;
+		return null;
+	},
+	importRegExp: /\[\^(\d+)\]/,
+	regExp: /\[\^(\d+)\]/,
+	replace: (textNode, match) => {
+		const id = parseInt(match[1]);
+		const refNode = $createFootnoteRefNode(id);
+		textNode.replace(refNode);
+	},
+	trigger: ']',
+	type: 'text-match',
+};
+
+export const OBSIDIAN_TRANSFORMERS: Transformer[] = [
+	FOOTNOTE_REF_TRANSFORMER,
 	HIGHLIGHT_TRANSFORMER,
 	HEADING,
 	QUOTE,

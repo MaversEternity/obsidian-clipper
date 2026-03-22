@@ -27,6 +27,8 @@ const ICONS = {
 	checklist: '<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><line x1="13" y1="6" x2="21" y2="6"/><line x1="13" y1="12" x2="21" y2="12"/><line x1="13" y1="18" x2="21" y2="18"/>',
 	heading: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/>',
 	codeblock: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m9 10-2 2 2 2"/><path d="m15 10 2 2-2 2"/>',
+	highlight: '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
+	footnote: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M12 10v4"/><circle cx="12" cy="8" r="0.5"/>',
 };
 
 const BASE_ITEMS: ToolbarItem[] = [
@@ -43,12 +45,15 @@ const BASE_ITEMS: ToolbarItem[] = [
 	{ type: 'button', action: 'italic', title: 'Italic', icon: ICONS.italic },
 	{ type: 'button', action: 'strikethrough', title: 'Strikethrough', icon: ICONS.strikethrough },
 	{ type: 'button', action: 'code', title: 'Inline code', icon: ICONS.code },
+	{ type: 'button', action: 'highlight', title: 'Highlight', icon: ICONS.highlight },
 	{ type: 'button', action: 'codeblock', title: 'Code block', icon: ICONS.codeblock },
 	{ type: 'separator' },
 	{ type: 'button', action: 'quote', title: 'Blockquote', icon: ICONS.quote },
 	{ type: 'button', action: 'ul', title: 'Bullet list', icon: ICONS.ul },
 	{ type: 'button', action: 'ol', title: 'Numbered list', icon: ICONS.ol },
 	{ type: 'button', action: 'checklist', title: 'Task list', icon: ICONS.checklist },
+	{ type: 'separator' },
+	{ type: 'button', action: 'footnote', title: 'Footnote', icon: ICONS.footnote },
 ];
 
 function makeSvg(icon: string): string {

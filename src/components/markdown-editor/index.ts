@@ -11,6 +11,8 @@ import { $convertFromMarkdownString } from '@lexical/markdown';
 import { createMarkdownEditor, setMarkdown, getMarkdown } from './editor';
 import { OBSIDIAN_TRANSFORMERS } from './transformers';
 import { $createImageNode } from './nodes/ImageNode';
+import { $createHighlightNode, $isHighlightNode } from './nodes/HighlightNode';
+import { $createFootnoteRefNode, $isFootnoteRefNode } from './nodes/FootnoteNodes';
 import { createToolbar, type ToolbarHandle } from './toolbar';
 import { isEditorPlugin, type EditorPlugin, type ToolbarButtonDef } from './plugin-interface';
 
@@ -135,6 +137,12 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			.editor-image-alt::placeholder { color: var(--text-faint); }
 			.editor-image-alt:focus { color: var(--text-normal); background: var(--background-primary); }
+			.footnote-ref {
+				color: var(--text-accent); cursor: pointer;
+				font-size: 0.75em; vertical-align: super; line-height: 0;
+				padding: 0 1px;
+			}
+			.footnote-ref:hover { text-decoration: underline; }
 			.cm-hashtag { color: var(--text-accent); background: var(--tag-background, rgba(var(--interactive-accent-rgb), 0.1)); border-radius: var(--radius-s); padding: 1px 4px; }
 			.editor-highlight { background: var(--text-highlight-bg); border-radius: 2px; }
 			.cm-quote {
@@ -472,6 +480,22 @@ export class MarkdownEditorElement extends HTMLElement {
 		if (selection.hasFormat('italic')) active.add('italic');
 		if (selection.hasFormat('strikethrough')) active.add('strikethrough');
 		if (selection.hasFormat('code')) active.add('code');
+		// Check if selection contains highlight or footnote nodes
+		const selNodes = selection.getNodes();
+		if (selNodes.some(n => $isHighlightNode(n))) active.add('highlight');
+		if (selNodes.some(n => $isFootnoteRefNode(n))) active.add('footnote');
+		// Also active when cursor is in a footnote definition paragraph
+		// (paragraph whose first child is a FootnoteRefNode followed by ": ")
+		const anchorParent = selection.anchor.getNode().getParent();
+		if (anchorParent) {
+			const firstChild = anchorParent.getFirstChild();
+			if ($isFootnoteRefNode(firstChild)) {
+				const second = firstChild.getNextSibling();
+				if (second && $isTextNode(second) && second.getTextContent().startsWith(':')) {
+					active.add('footnote');
+				}
+			}
+		}
 
 		// Block types — check the anchor node's parent chain
 		const anchorNode = selection.anchor.getNode();
@@ -531,6 +555,53 @@ export class MarkdownEditorElement extends HTMLElement {
 				break;
 			case 'code':
 				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+				break;
+			case 'highlight':
+				this.editor.update(() => {
+					const selection = $getSelection();
+					if (!$isRangeSelection(selection)) return;
+					const selectedText = selection.getTextContent();
+					if (!selectedText) return;
+					const nodes = selection.getNodes();
+					// Toggle: if already highlighted, unwrap
+					const isHighlighted = nodes.some(n => $isHighlightNode(n));
+					if (isHighlighted) {
+						for (const node of nodes) {
+							if ($isHighlightNode(node)) {
+								const text = $createTextNode(node.getTextContent());
+								node.replace(text);
+							}
+						}
+					} else {
+						// Wrap selection in highlight
+						selection.removeText();
+						const highlightNode = $createHighlightNode(selectedText);
+						selection.insertNodes([highlightNode]);
+					}
+				});
+				break;
+			case 'footnote':
+				this.editor.update(() => {
+					const selection = $getSelection();
+					if (!$isRangeSelection(selection)) return;
+					const root = $getRoot();
+					// Find highest existing footnote number
+					let maxFn = 0;
+					const md = getMarkdown(this.editor!, this.pluginTransformers);
+					const matches = md.matchAll(/\[\^(\d+)\]/g);
+					for (const m of matches) {
+						const n = parseInt(m[1]);
+						if (n > maxFn) maxFn = n;
+					}
+					const id = maxFn + 1;
+					// Insert superscript reference at cursor
+					const refNode = $createFootnoteRefNode(id);
+					selection.insertNodes([refNode]);
+					// Append definition as plain paragraph at end
+					const defNode = $createParagraphNode();
+					defNode.append($createTextNode(`[^${id}]: `));
+					root.append(defNode);
+				});
 				break;
 			case 'h1': case 'h2': case 'h3':
 				this.editor.update(() => {
