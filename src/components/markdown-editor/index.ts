@@ -123,11 +123,11 @@ export class MarkdownEditorElement extends HTMLElement {
 			.toolbar-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 			.editor-root table {
-				border-collapse: collapse; width: 100%; margin: 0.4em 0;
+				border-collapse: collapse; width: calc(100% - 40px); margin: 1em 20px;
 				font-size: var(--font-ui-small);
 			}
 			.editor-root th, .editor-root td {
-				border: 1px solid var(--divider-color); padding: 6px 10px;
+				border: 1px solid var(--divider-color); padding: 8px 12px;
 				text-align: left; min-width: 60px;
 			}
 			.editor-root th {
@@ -146,6 +146,36 @@ export class MarkdownEditorElement extends HTMLElement {
 			.table-helper-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 			.table-add-row { height: 18px; border-radius: 0 0 4px 4px; border-top: none; }
 			.table-add-col { width: 18px; border-radius: 0 4px 4px 0; border-left: none; }
+			.table-drag-handle {
+				position: absolute; z-index: 10;
+				display: none; align-items: center; justify-content: center;
+				color: var(--text-faint); cursor: grab; font-size: 10px;
+				border-radius: var(--radius-s); user-select: none;
+			}
+			.table-drag-handle:hover { color: var(--text-muted); background: var(--background-modifier-hover); }
+			.table-drag-handle:active { cursor: grabbing; }
+			.table-drag-row { width: 18px; }
+			.table-drag-col { height: 18px; }
+			.editor-root tr.table-row-dragging td,
+			.editor-root tr.table-row-dragging th {
+				outline: 2px solid var(--interactive-accent);
+				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
+			}
+			.editor-root td.table-col-dragging,
+			.editor-root th.table-col-dragging {
+				outline: 2px solid var(--interactive-accent);
+				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
+			}
+			.table-insert-indicator-row {
+				position: absolute; z-index: 11; height: 3px;
+				background: var(--interactive-accent); border-radius: 2px;
+				pointer-events: none; display: none;
+			}
+			.table-insert-indicator-col {
+				position: absolute; z-index: 11; width: 3px;
+				background: var(--interactive-accent); border-radius: 2px;
+				pointer-events: none; display: none;
+			}
 			.tok-comment { color: var(--text-faint); font-style: italic; }
 			.tok-keyword { color: var(--text-accent); }
 			.tok-string { color: var(--color-green, #a3be8c); }
