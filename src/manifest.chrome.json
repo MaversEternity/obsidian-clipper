@@ -49,9 +49,22 @@
 	],
 	"web_accessible_resources": [
 		{
-			"resources": ["reader.css", "reader-script.js", "browser-polyfill.min.js", "style.css", "side-panel.html", "flatten-shadow-dom.js", "book-viewer.html", "book-viewer.js", "book-viewer-style.css", "pdf.worker.min.mjs", "cmaps/*", "standard_fonts/*"],
+			"resources": [
+				"reader.css",
+				"reader-script.js",
+				"browser-polyfill.min.js",
+				"style.css",
+				"side-panel.html",
+				"flatten-shadow-dom.js",
+				"book-viewer.html",
+				"book-viewer.js",
+				"book-viewer-style.css",
+				"pdf.worker.min.mjs",
+				"cmaps/*",
+				"standard_fonts/*"
+			],
 			"extension_ids": ["*"],
-			"matches": [ "*://*/*", "file://*/*" ]
+			"matches": ["*://*/*", "file://*/*"]
 		}
 	],
 	"content_security_policy": {

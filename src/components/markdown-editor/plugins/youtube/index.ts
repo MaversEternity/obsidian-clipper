@@ -9,14 +9,15 @@ const YOUTUBE_TRANSFORMER: TextMatchTransformer = {
 	dependencies: [YouTubeNode],
 	export: (node: LexicalNode) => {
 		if (node instanceof YouTubeNode) {
-			return `https://www.youtube.com/watch?v=${node.__videoId}`;
+			const t = node.__startTime;
+			return t ? `https://www.youtube.com/watch?v=${node.__videoId}&t=${t}` : `https://www.youtube.com/watch?v=${node.__videoId}`;
 		}
 		return null;
 	},
-	importRegExp: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-	regExp: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+	importRegExp: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[&?]t=(\d+))?/,
+	regExp: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[&?]t=(\d+))?/,
 	replace: (textNode, match) => {
-		textNode.replace($createYouTubeNode(match[1]));
+		textNode.replace($createYouTubeNode(match[1], parseInt(match[2] || '0', 10)));
 	},
 	trigger: ' ',
 	type: 'text-match',
@@ -55,14 +56,14 @@ export class EditorPluginYouTube extends HTMLElement implements EditorPlugin {
 				const text = event.clipboardData?.getData('text/plain')?.trim();
 				if (!text) return false;
 
-				const videoId = extractYouTubeVideoId(text);
-				if (!videoId) return false; // Not a YouTube URL, let default paste handle it
+				const result = extractYouTubeVideoId(text);
+				if (!result) return false; // Not a YouTube URL, let default paste handle it
 
 				event.preventDefault();
 				editor.update(() => {
 					const selection = $getSelection();
 					if ($isRangeSelection(selection)) {
-						const node = $createYouTubeNode(videoId);
+						const node = $createYouTubeNode(result.videoId, result.startTime);
 						selection.insertNodes([node]);
 					}
 				});
@@ -95,20 +96,17 @@ export class EditorPluginYouTube extends HTMLElement implements EditorPlugin {
 		console.debug('[youtube-plugin] popover result:', result);
 
 		if (result && result.url) {
-			const videoId = extractYouTubeVideoId(result.url);
-			console.debug('[youtube-plugin] videoId:', videoId, 'from url:', result.url);
-			if (!videoId) return;
+			const parsed = extractYouTubeVideoId(result.url);
+			if (!parsed) return;
 
 			this.editor.update(() => {
 				const selection = $getSelection();
-				console.debug('[youtube-plugin] selection:', selection);
 				if ($isRangeSelection(selection)) {
-					selection.insertNodes([$createYouTubeNode(videoId)]);
+					selection.insertNodes([$createYouTubeNode(parsed.videoId, parsed.startTime)]);
 				} else {
-					// Fallback: append to root
 					const root = $getRoot();
 					const paragraph = $createParagraphNode();
-					paragraph.append($createYouTubeNode(videoId));
+					paragraph.append($createYouTubeNode(parsed.videoId, parsed.startTime));
 					root.append(paragraph);
 				}
 			});
