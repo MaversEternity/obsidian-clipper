@@ -1,12 +1,16 @@
 export interface PopoverField {
 	name: string;
+	label?: string;
 	placeholder?: string;
 	value?: string;
+	required?: boolean;
 }
 
 export interface PopoverConfig {
+	title?: string;
 	fields: PopoverField[];
 	submitLabel?: string;
+	cancelLabel?: string;
 }
 
 export class EditorPopover extends HTMLElement {
@@ -31,76 +35,185 @@ export class EditorPopover extends HTMLElement {
 		const style = document.createElement('style');
 		style.textContent = `
 			:host {
-				position: absolute; top: 0; left: 0; right: 0; z-index: 100;
+				position: fixed; inset: 0; z-index: 1000;
+				display: flex; align-items: center; justify-content: center;
 			}
-			.popover {
-				background: var(--background-primary); border: 1px solid var(--divider-color);
-				border-radius: var(--radius-s); box-shadow: var(--shadow-s); padding: 8px;
+			.backdrop {
+				position: absolute; inset: 0;
+				background: rgba(0, 0, 0, 0.5);
 			}
-			.field { margin-bottom: 6px; }
+			.dialog {
+				position: relative;
+				background: var(--background-primary, #1a1a1b);
+				border: 1px solid var(--divider-color, #343536);
+				border-radius: 16px;
+				box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+				padding: 24px;
+				min-width: 360px;
+				max-width: 480px;
+				width: 100%;
+			}
+			.header {
+				display: flex; align-items: center; justify-content: space-between;
+				margin-bottom: 20px;
+			}
+			.title {
+				font-size: 18px; font-weight: 600;
+				color: var(--text-normal, #d7dadc);
+				margin: 0;
+			}
+			.close-btn {
+				display: flex; align-items: center; justify-content: center;
+				width: 32px; height: 32px; padding: 0; border: none;
+				border-radius: 50%; background: transparent;
+				color: var(--text-muted, #818384); cursor: pointer;
+				transition: background 0.15s;
+			}
+			.close-btn:hover {
+				background: var(--background-modifier-hover, #2a2a2b);
+				color: var(--text-normal, #d7dadc);
+			}
+			.field {
+				margin-bottom: 16px;
+			}
+			.field-wrapper {
+				position: relative;
+				border: 1px solid var(--divider-color, #343536);
+				border-radius: 12px;
+				padding: 8px 12px;
+				transition: border-color 0.15s;
+			}
+			.field-wrapper:focus-within {
+				border-color: var(--interactive-accent, #4f7df9);
+			}
+			label {
+				display: block;
+				font-size: 11px; font-weight: 500;
+				color: var(--text-muted, #818384);
+				margin-bottom: 2px;
+			}
+			.required { color: var(--text-error, #ff4500); }
 			input {
-				width: 100%; padding: 4px 8px; border: 1px solid var(--divider-color);
-				border-radius: var(--radius-s); background: var(--background-primary);
-				color: var(--text-normal); font-size: var(--font-ui-smaller);
-				font-family: var(--font-default); box-sizing: border-box;
+				width: 100%; padding: 0; border: none;
+				background: transparent;
+				color: var(--text-normal, #d7dadc);
+				font-size: 14px;
+				font-family: var(--font-default);
+				box-sizing: border-box;
+				outline: none;
 			}
-			input:focus { outline: none; border-color: var(--interactive-accent); }
-			.actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-			button {
-				padding: 4px 12px; border-radius: var(--radius-s); font-size: var(--font-ui-smaller);
+			input::placeholder { color: var(--text-faint, #545456); }
+			.actions {
+				display: flex; gap: 12px; margin-top: 24px;
+			}
+			.actions button {
+				flex: 1; padding: 10px 16px;
+				border-radius: 24px;
+				font-size: 14px; font-weight: 600;
 				cursor: pointer; border: none;
+				transition: opacity 0.15s;
 			}
-			.cancel { background: transparent; color: var(--text-muted); }
-			.submit { background: var(--interactive-accent); color: var(--text-on-accent); }
+			.actions button:hover { opacity: 0.85; }
+			.cancel-btn {
+				background: var(--background-modifier-hover, #2a2a2b);
+				color: var(--text-normal, #d7dadc);
+			}
+			.submit-btn {
+				background: var(--interactive-accent, #4f7df9);
+				color: var(--text-on-accent, #fff);
+			}
 		`;
 		this.shadow.appendChild(style);
 
-		const popover = document.createElement('div');
-		popover.className = 'popover';
+		// Backdrop
+		const backdrop = document.createElement('div');
+		backdrop.className = 'backdrop';
+		backdrop.addEventListener('click', () => this.cancel());
+		this.shadow.appendChild(backdrop);
 
+		// Dialog
+		const dialog = document.createElement('div');
+		dialog.className = 'dialog';
+
+		// Header
+		if (config.title) {
+			const header = document.createElement('div');
+			header.className = 'header';
+
+			const title = document.createElement('h2');
+			title.className = 'title';
+			title.textContent = config.title;
+
+			const closeBtn = document.createElement('button');
+			closeBtn.type = 'button';
+			closeBtn.className = 'close-btn';
+			closeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+			closeBtn.addEventListener('click', () => this.cancel());
+
+			header.appendChild(title);
+			header.appendChild(closeBtn);
+			dialog.appendChild(header);
+		}
+
+		// Form
 		const form = document.createElement('form');
 		form.addEventListener('submit', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			console.debug('[editor-popover] form submitted');
 			this.submit(config);
 		});
 
 		for (const field of config.fields) {
 			const div = document.createElement('div');
 			div.className = 'field';
+
+			const wrapper = document.createElement('div');
+			wrapper.className = 'field-wrapper';
+
+			if (field.label) {
+				const lbl = document.createElement('label');
+				lbl.textContent = field.label;
+				if (field.required) {
+					const req = document.createElement('span');
+					req.className = 'required';
+					req.textContent = ' *';
+					lbl.appendChild(req);
+				}
+				wrapper.appendChild(lbl);
+			}
+
 			const input = document.createElement('input');
 			input.type = 'text';
 			input.name = field.name;
 			input.placeholder = field.placeholder || '';
 			if (field.value) input.value = field.value;
-			div.appendChild(input);
+			if (field.required) input.required = true;
+			wrapper.appendChild(input);
+
+			div.appendChild(wrapper);
 			form.appendChild(div);
 		}
 
+		// Actions
 		const actions = document.createElement('div');
 		actions.className = 'actions';
 
 		const cancelBtn = document.createElement('button');
 		cancelBtn.type = 'button';
-		cancelBtn.className = 'cancel';
-		cancelBtn.textContent = 'Cancel';
+		cancelBtn.className = 'cancel-btn';
+		cancelBtn.textContent = config.cancelLabel || 'Cancel';
 		cancelBtn.addEventListener('click', () => this.cancel());
 
 		const submitBtn = document.createElement('button');
-		submitBtn.type = 'button'; // Use button type + click handler instead of form submit
-		submitBtn.className = 'submit';
-		submitBtn.textContent = config.submitLabel || 'Insert';
-		submitBtn.addEventListener('click', () => {
-			console.debug('[editor-popover] submit clicked');
-			this.submit(config);
-		});
+		submitBtn.type = 'submit';
+		submitBtn.className = 'submit-btn';
+		submitBtn.textContent = config.submitLabel || 'Save';
 
 		actions.appendChild(cancelBtn);
 		actions.appendChild(submitBtn);
 		form.appendChild(actions);
-		popover.appendChild(form);
-		this.shadow.appendChild(popover);
+		dialog.appendChild(form);
+		this.shadow.appendChild(dialog);
 
 		// Focus first input
 		requestAnimationFrame(() => {
@@ -116,7 +229,7 @@ export class EditorPopover extends HTMLElement {
 				this.cancel();
 			}
 		};
-		this.addEventListener('keydown', this.onKeydown);
+		document.addEventListener('keydown', this.onKeydown);
 	}
 
 	private onKeydown: ((e: KeyboardEvent) => void) | null = null;
@@ -138,7 +251,7 @@ export class EditorPopover extends HTMLElement {
 
 	private cleanup() {
 		if (this.onKeydown) {
-			this.removeEventListener('keydown', this.onKeydown);
+			document.removeEventListener('keydown', this.onKeydown);
 		}
 		this.remove();
 	}

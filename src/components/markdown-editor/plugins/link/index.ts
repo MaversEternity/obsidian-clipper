@@ -1,6 +1,6 @@
 import type { Klass, LexicalEditor, LexicalNode } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
-import { $getSelection, $isRangeSelection, $createTextNode, PASTE_COMMAND, COMMAND_PRIORITY_HIGH, $isNodeSelection } from 'lexical';
+import { $getSelection, $isRangeSelection, $createTextNode, $getNearestNodeFromDOMNode, PASTE_COMMAND, COMMAND_PRIORITY_HIGH } from 'lexical';
 import { $createLinkNode, $isLinkNode, LinkNode, $toggleLink } from '@lexical/link';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { EditorPopover } from '../../components/editor-popover';
@@ -237,38 +237,27 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 		container?.appendChild(popover);
 
 		const result = await popover.show({
+			title: 'Edit Link',
 			fields: [
-				{ name: 'text', placeholder: 'Link text', value: currentText },
-				{ name: 'url', placeholder: 'https://', value: currentUrl },
+				{ name: 'text', label: 'Text', placeholder: 'Link text', value: currentText },
+				{ name: 'url', label: 'Link', placeholder: 'https://', value: currentUrl, required: true },
 			],
-			submitLabel: 'Update link',
+			submitLabel: 'Save',
 		});
 
 		if (result && result.url) {
 			this.editor.update(() => {
-				// Find the LinkNode by traversing
-				const editorState = this.editor!.getEditorState();
-				editorState.read(() => {
-					// We need to find the link node in the editor state
-				});
+				let lexicalNode = $getNearestNodeFromDOMNode(linkEl);
+				if (!lexicalNode) return;
 
-				// Use $toggleLink to update — first select the link node
-				const key = linkEl.getAttribute('data-lexical-key');
-				if (!key) return;
+				// Walk up to find the LinkNode (DOM element might map to a child text node)
+				let linkNode = $isLinkNode(lexicalNode) ? lexicalNode : lexicalNode.getParent();
+				if (!linkNode || !$isLinkNode(linkNode)) return;
 
-				const node = this.editor!.getEditorState()._nodeMap.get(key);
-				if (!node || !$isLinkNode(node)) return;
-
-				const writableNode = node.getWritable() as LinkNode;
-				writableNode.setURL(result.url);
-
-				if (result.text && result.text !== currentText) {
-					const children = writableNode.getChildren();
-					for (const child of children) {
-						child.remove();
-					}
-					writableNode.append($createTextNode(result.text));
-				}
+				// Replace with a new link node to avoid empty-node auto-removal
+				const newLink = $createLinkNode(result.url);
+				newLink.append($createTextNode(result.text || result.url));
+				linkNode.replace(newLink);
 			});
 		}
 
@@ -306,11 +295,12 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 		container?.appendChild(popover);
 
 		const result = await popover.show({
+			title: 'Insert Link',
 			fields: [
-				{ name: 'text', placeholder: 'Link text', value: selectedText },
-				{ name: 'url', placeholder: 'https://' },
+				{ name: 'text', label: 'Text', placeholder: 'Link text', value: selectedText },
+				{ name: 'url', label: 'Link', placeholder: 'https://', required: true },
 			],
-			submitLabel: 'Insert link',
+			submitLabel: 'Insert',
 		});
 
 		if (result && result.url) {

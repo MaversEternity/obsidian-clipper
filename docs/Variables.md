@@ -37,6 +37,9 @@ The main content variable is `{{content}}`, which contains the article content, 
 | `{{time}}`          | Current date and time                                                                  |
 | `{{url}}`           | Current URL                                                                            |
 | `{{words}}`         | Word count                                                                             |
+| `{{filePath}}`      | Full file path for `file://` URLs (e.g. `/Users/john/Documents/book.pdf`)              |
+| `{{fileName}}`      | File name extracted from `file://` URLs (e.g. `book.pdf`)                              |
+| `{{pageNumber}}`    | Current page number for PDFs opened in the [[Book Viewer]]                             |
 
 ## Prompt variables
 

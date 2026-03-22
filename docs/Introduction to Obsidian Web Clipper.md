@@ -33,6 +33,10 @@ Get the Obsidian Web Clipper extension from the official directory for your brow
 	- Highlight important passages and select elements you want to save.
 - [[Interpret web pages|Interpreter]]
 	- Use natural language prompts to capture and modify data on a page.
+- [[Book Viewer]]
+	- Read PDFs with full text selection, lookup, and highlighting.
+- [[Markdown Editor]]
+	- Compose and format note content with a rich text editor.
 - [[Troubleshoot Web Clipper|Troubleshooting]]
 	- Resolve common issues with Web Clipper.
 - [[Obsidian Web Clipper/Templates|Templates]]
