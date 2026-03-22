@@ -617,6 +617,13 @@ export class MarkdownEditorElement extends HTMLElement {
 					root.append(defNode);
 				});
 				break;
+			case 'h-none':
+				this.editor.update(() => {
+					const selection = $getSelection();
+					if (!$isRangeSelection(selection)) return;
+					$setBlocksType(selection, () => $createParagraphNode());
+				});
+				break;
 			case 'h1': case 'h2': case 'h3':
 				this.editor.update(() => {
 					const selection = $getSelection();
