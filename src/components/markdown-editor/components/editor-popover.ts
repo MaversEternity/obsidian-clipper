@@ -1,3 +1,5 @@
+import { $getNearestNodeFromDOMNode, $createNodeSelection, $setSelection } from 'lexical';
+
 export interface PopoverField {
 	name: string;
 	label?: string;
@@ -20,13 +22,14 @@ export interface PopoverConfig {
 
 export class EditorPopover extends HTMLElement {
 	private shadow: ShadowRoot;
-	private resolve: ((values: Record<string, string> | null) => void) | null = null;
+	private resolve: ((values: Record<string, string> | null) => void) | null =
+		null;
 	private editor: any = null;
 	private anchor: HTMLElement | null = null;
 
 	constructor() {
 		super();
-		this.shadow = this.attachShadow({ mode: 'open' });
+		this.shadow = this.attachShadow({ mode: "open" });
 	}
 
 	show(config: PopoverConfig): Promise<Record<string, string> | null> {
@@ -39,9 +42,9 @@ export class EditorPopover extends HTMLElement {
 	}
 
 	private render(config: PopoverConfig) {
-		this.shadow.innerHTML = '';
+		this.shadow.innerHTML = "";
 
-		const style = document.createElement('style');
+		const style = document.createElement("style");
 		style.textContent = `
 			:host {
 				position: fixed; inset: 0; z-index: 1000;
@@ -135,29 +138,30 @@ export class EditorPopover extends HTMLElement {
 		this.shadow.appendChild(style);
 
 		// Backdrop
-		const backdrop = document.createElement('div');
-		backdrop.className = 'backdrop';
-		backdrop.addEventListener('click', () => this.cancel());
+		const backdrop = document.createElement("div");
+		backdrop.className = "backdrop";
+		backdrop.addEventListener("click", () => this.cancel());
 		this.shadow.appendChild(backdrop);
 
 		// Dialog
-		const dialog = document.createElement('div');
-		dialog.className = 'dialog';
+		const dialog = document.createElement("div");
+		dialog.className = "dialog";
 
 		// Header
 		if (config.title) {
-			const header = document.createElement('div');
-			header.className = 'header';
+			const header = document.createElement("div");
+			header.className = "header";
 
-			const title = document.createElement('h2');
-			title.className = 'title';
+			const title = document.createElement("h2");
+			title.className = "title";
 			title.textContent = config.title;
 
-			const closeBtn = document.createElement('button');
-			closeBtn.type = 'button';
-			closeBtn.className = 'close-btn';
-			closeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-			closeBtn.addEventListener('click', () => this.cancel());
+			const closeBtn = document.createElement("button");
+			closeBtn.type = "button";
+			closeBtn.className = "close-btn";
+			closeBtn.innerHTML =
+				'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+			closeBtn.addEventListener("click", () => this.cancel());
 
 			header.appendChild(title);
 			header.appendChild(closeBtn);
@@ -165,36 +169,36 @@ export class EditorPopover extends HTMLElement {
 		}
 
 		// Form
-		const form = document.createElement('form');
-		form.addEventListener('submit', (e) => {
+		const form = document.createElement("form");
+		form.addEventListener("submit", (e) => {
 			e.preventDefault();
 			e.stopPropagation();
 			this.submit(config);
 		});
 
 		for (const field of config.fields) {
-			const div = document.createElement('div');
-			div.className = 'field';
+			const div = document.createElement("div");
+			div.className = "field";
 
-			const wrapper = document.createElement('div');
-			wrapper.className = 'field-wrapper';
+			const wrapper = document.createElement("div");
+			wrapper.className = "field-wrapper";
 
 			if (field.label) {
-				const lbl = document.createElement('label');
+				const lbl = document.createElement("label");
 				lbl.textContent = field.label;
 				if (field.required) {
-					const req = document.createElement('span');
-					req.className = 'required';
-					req.textContent = ' *';
+					const req = document.createElement("span");
+					req.className = "required";
+					req.textContent = " *";
 					lbl.appendChild(req);
 				}
 				wrapper.appendChild(lbl);
 			}
 
-			const input = document.createElement('input');
-			input.type = field.type || 'text';
+			const input = document.createElement("input");
+			input.type = field.type || "text";
 			input.name = field.name;
-			input.placeholder = field.placeholder || '';
+			input.placeholder = field.placeholder || "";
 			if (field.value) input.value = field.value;
 			if (field.required) input.required = true;
 			wrapper.appendChild(input);
@@ -204,19 +208,19 @@ export class EditorPopover extends HTMLElement {
 		}
 
 		// Actions
-		const actions = document.createElement('div');
-		actions.className = 'actions';
+		const actions = document.createElement("div");
+		actions.className = "actions";
 
-		const cancelBtn = document.createElement('button');
-		cancelBtn.type = 'button';
-		cancelBtn.className = 'cancel-btn';
-		cancelBtn.textContent = config.cancelLabel || 'Cancel';
-		cancelBtn.addEventListener('click', () => this.cancel());
+		const cancelBtn = document.createElement("button");
+		cancelBtn.type = "button";
+		cancelBtn.className = "cancel-btn";
+		cancelBtn.textContent = config.cancelLabel || "Cancel";
+		cancelBtn.addEventListener("click", () => this.cancel());
 
-		const submitBtn = document.createElement('button');
-		submitBtn.type = 'submit';
-		submitBtn.className = 'submit-btn';
-		submitBtn.textContent = config.submitLabel || 'Save';
+		const submitBtn = document.createElement("button");
+		submitBtn.type = "submit";
+		submitBtn.className = "submit-btn";
+		submitBtn.textContent = config.submitLabel || "Save";
 
 		actions.appendChild(cancelBtn);
 		actions.appendChild(submitBtn);
@@ -226,19 +230,21 @@ export class EditorPopover extends HTMLElement {
 
 		// Focus first input
 		requestAnimationFrame(() => {
-			const firstInput = this.shadow.querySelector('input') as HTMLInputElement;
+			const firstInput = this.shadow.querySelector(
+				"input",
+			) as HTMLInputElement;
 			firstInput?.focus();
 		});
 
 		// Escape to close
 		this.onKeydown = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
+			if (e.key === "Escape") {
 				e.preventDefault();
 				e.stopPropagation();
 				this.cancel();
 			}
 		};
-		document.addEventListener('keydown', this.onKeydown);
+		document.addEventListener("keydown", this.onKeydown);
 	}
 
 	private onKeydown: ((e: KeyboardEvent) => void) | null = null;
@@ -246,8 +252,10 @@ export class EditorPopover extends HTMLElement {
 	private submit(config: PopoverConfig) {
 		const values: Record<string, string> = {};
 		for (const field of config.fields) {
-			const input = this.shadow.querySelector(`[name="${field.name}"]`) as HTMLInputElement;
-			values[field.name] = input?.value || '';
+			const input = this.shadow.querySelector(
+				`[name="${field.name}"]`,
+			) as HTMLInputElement;
+			values[field.name] = input?.value || "";
 		}
 		this.resolve?.(values);
 		this.cleanup();
@@ -260,22 +268,32 @@ export class EditorPopover extends HTMLElement {
 
 	private cleanup() {
 		if (this.onKeydown) {
-			document.removeEventListener('keydown', this.onKeydown);
+			document.removeEventListener("keydown", this.onKeydown);
 		}
-		// Restore focus via anchor element
-		if (this.anchor) {
-			this.editor?.getRootElement()?.focus();
-			// Use mousedown instead of click to avoid <a> navigation
-			this.anchor.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-			this.anchor.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-			this.anchor.scrollIntoView({ block: 'nearest' });
+		// Restore Lexical selection via anchor DOM node
+		if (this.anchor && this.editor) {
+			const editor = this.editor;
+			const anchor = this.anchor;
+			editor.update(() => {
+				const node = $getNearestNodeFromDOMNode(anchor);
+				if (node) {
+					if ('isInline' in node && typeof node.isInline === 'function' && !node.isInline()) {
+						const sel = $createNodeSelection();
+						sel.add(node.getKey());
+						$setSelection(sel);
+					} else {
+						node.selectEnd();
+					}
+				}
+			});
+			editor.getRootElement()?.focus({ preventScroll: true });
 		} else {
-			this.editor?.getRootElement()?.focus();
+			this.editor?.getRootElement()?.focus({ preventScroll: true });
 		}
 		this.remove();
 	}
 }
 
-if (!customElements.get('editor-popover')) {
-	customElements.define('editor-popover', EditorPopover);
+if (!customElements.get("editor-popover")) {
+	customElements.define("editor-popover", EditorPopover);
 }
