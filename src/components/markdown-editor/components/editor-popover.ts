@@ -1,4 +1,4 @@
-import { $getNearestNodeFromDOMNode, $createNodeSelection, $setSelection } from 'lexical';
+import { $getNearestNodeFromDOMNode, $createNodeSelection, $setSelection, $getSelection, type BaseSelection } from 'lexical';
 
 export interface PopoverField {
 	name: string;
@@ -26,6 +26,7 @@ export class EditorPopover extends HTMLElement {
 		null;
 	private editor: any = null;
 	private anchor: HTMLElement | null = null;
+	private savedSelection: BaseSelection | null = null;
 
 	constructor() {
 		super();
@@ -35,6 +36,12 @@ export class EditorPopover extends HTMLElement {
 	show(config: PopoverConfig): Promise<Record<string, string> | null> {
 		this.editor = config.editor || null;
 		this.anchor = config.anchor || null;
+		// Save Lexical selection before dialog steals focus
+		if (this.editor) {
+			this.editor.getEditorState().read(() => {
+				this.savedSelection = $getSelection()?.clone() || null;
+			});
+		}
 		return new Promise((resolve) => {
 			this.resolve = resolve;
 			this.render(config);
@@ -257,39 +264,32 @@ export class EditorPopover extends HTMLElement {
 			) as HTMLInputElement;
 			values[field.name] = input?.value || "";
 		}
+		// Restore saved selection before resolving so plugins insert at cursor
+		this.restoreSelection();
 		this.resolve?.(values);
 		this.cleanup();
 	}
 
 	private cancel() {
+		this.restoreSelection();
 		this.resolve?.(null);
 		this.cleanup();
+	}
+
+	private restoreSelection() {
+		if (this.savedSelection && this.editor) {
+			this.editor.update(() => {
+				$setSelection(this.savedSelection);
+			});
+			this.editor.getRootElement()?.focus({ preventScroll: true });
+		}
 	}
 
 	private cleanup() {
 		if (this.onKeydown) {
 			document.removeEventListener("keydown", this.onKeydown);
 		}
-		// Restore Lexical selection via anchor DOM node
-		if (this.anchor && this.editor) {
-			const editor = this.editor;
-			const anchor = this.anchor;
-			editor.update(() => {
-				const node = $getNearestNodeFromDOMNode(anchor);
-				if (node) {
-					if ('isInline' in node && typeof node.isInline === 'function' && !node.isInline()) {
-						const sel = $createNodeSelection();
-						sel.add(node.getKey());
-						$setSelection(sel);
-					} else {
-						node.selectEnd();
-					}
-				}
-			});
-			editor.getRootElement()?.focus({ preventScroll: true });
-		} else {
-			this.editor?.getRootElement()?.focus({ preventScroll: true });
-		}
+		this.savedSelection = null;
 		this.remove();
 	}
 }
