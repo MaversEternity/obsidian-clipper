@@ -485,15 +485,17 @@ export class MarkdownEditorElement extends HTMLElement {
 		if (selNodes.some(n => $isHighlightNode(n))) active.add('highlight');
 		if (selNodes.some(n => $isFootnoteRefNode(n))) active.add('footnote');
 		// Also active when cursor is in a footnote definition paragraph
-		// (paragraph whose first child is a FootnoteRefNode followed by ": ")
-		const anchorParent = selection.anchor.getNode().getParent();
-		if (anchorParent) {
-			const firstChild = anchorParent.getFirstChild();
-			if ($isFootnoteRefNode(firstChild)) {
-				const second = firstChild.getNextSibling();
-				if (second && $isTextNode(second) && second.getTextContent().startsWith(':')) {
-					active.add('footnote');
-				}
+		// Walk up to find the paragraph-level parent
+		let fnBlock = selection.anchor.getNode();
+		const root = $getRoot();
+		while (fnBlock.getParent() && fnBlock.getParent() !== root) {
+			fnBlock = fnBlock.getParent()!;
+		}
+		const fnFirst = 'getFirstChild' in fnBlock ? (fnBlock as any).getFirstChild() : null;
+		if ($isFootnoteRefNode(fnFirst)) {
+			const fnSecond = fnFirst.getNextSibling();
+			if (fnSecond && $isTextNode(fnSecond) && fnSecond.getTextContent().startsWith(':')) {
+				active.add('footnote');
 			}
 		}
 
