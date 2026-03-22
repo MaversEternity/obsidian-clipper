@@ -1,4 +1,7 @@
-import { type LexicalEditor, type Klass, type LexicalNode, $createParagraphNode, $createTextNode } from 'lexical';
+import {
+	type LexicalEditor, type Klass, type LexicalNode,
+	$createParagraphNode, $createTextNode,
+} from 'lexical';
 import type { Transformer, ElementTransformer } from '@lexical/markdown';
 import {
 	TableNode, TableRowNode, TableCellNode,
@@ -6,11 +9,11 @@ import {
 	$isTableNode, $isTableRowNode, $isTableCellNode,
 	INSERT_TABLE_COMMAND, registerTablePlugin,
 	TableCellHeaderStates,
+	$insertTableRowAtSelection, $insertTableColumnAtSelection,
 } from '@lexical/table';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { EditorPopover } from '../../components/editor-popover';
 
-// Markdown table transformer
 const TABLE_TRANSFORMER: ElementTransformer = {
 	dependencies: [TableNode, TableRowNode, TableCellNode],
 	export: (node: LexicalNode) => {
@@ -27,13 +30,11 @@ const TABLE_TRANSFORMER: ElementTransformer = {
 			const cells = row.getChildren();
 			const cellTexts = cells.map(cell => {
 				if (!$isTableCellNode(cell)) return '';
-				// Get text content from cell's paragraph children
 				return cell.getTextContent().replace(/\|/g, '\\|').trim();
 			});
 			lines.push('| ' + cellTexts.join(' | ') + ' |');
 
 			if (isFirstRow) {
-				// Add separator row
 				lines.push('| ' + cellTexts.map(() => '---').join(' | ') + ' |');
 				isFirstRow = false;
 			}
@@ -42,61 +43,21 @@ const TABLE_TRANSFORMER: ElementTransformer = {
 		return lines.join('\n');
 	},
 	regExp: /^\|(.+)\|[ \t]*$/,
-	replace: (parentNode, _children, match, isImport) => {
+	replace: (_parentNode, _children, _match, isImport) => {
 		if (!isImport) return false;
-		// This handles line-by-line import — collect all table lines
-		// The markdown import calls this for each matching line
-		return false; // Let the full import handle it
+		return false;
 	},
 	type: 'element',
 };
-
-// Full markdown table import — handles the complete table block
-function importMarkdownTable(markdown: string): { node: TableNode; consumed: number } | null {
-	const lines = markdown.split('\n');
-	const tableLines: string[] = [];
-
-	for (const line of lines) {
-		if (/^\|(.+)\|[ \t]*$/.test(line.trim())) {
-			tableLines.push(line.trim());
-		} else if (tableLines.length > 0) {
-			break;
-		}
-	}
-
-	if (tableLines.length < 2) return null; // Need at least header + separator
-
-	// Filter out separator row
-	const dataLines = tableLines.filter(line => !/^\|[\s\-:|]+\|$/.test(line));
-	if (dataLines.length === 0) return null;
-
-	const tableNode = $createTableNode();
-
-	dataLines.forEach((line, rowIndex) => {
-		const cells = line.split('|').slice(1, -1).map(c => c.trim());
-		const rowNode = $createTableRowNode();
-
-		cells.forEach(cellText => {
-			const headerState = rowIndex === 0
-				? TableCellHeaderStates.ROW
-				: TableCellHeaderStates.NO_STATUS;
-			const cellNode = $createTableCellNode(headerState);
-			const paragraph = $createParagraphNode();
-			paragraph.append($createTextNode(cellText.replace(/\\\|/g, '|')));
-			cellNode.append(paragraph);
-			rowNode.append(cellNode);
-		});
-
-		tableNode.append(rowNode);
-	});
-
-	return { node: tableNode, consumed: tableLines.length };
-}
 
 export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	private editor: LexicalEditor | null = null;
 	private hostShadow: ShadowRoot | null = null;
 	private cleanups: (() => void)[] = [];
+	private addRowBtn: HTMLButtonElement | null = null;
+	private addColBtn: HTMLButtonElement | null = null;
+	private activeTable: HTMLElement | null = null;
+	private hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	getNodes(): Klass<LexicalNode>[] {
 		return [TableNode, TableRowNode, TableCellNode];
@@ -119,15 +80,166 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 		this.editor = editor;
 		this.hostShadow = hostShadow;
 
-		// Register table plugin for selection handling
 		this.cleanups.push(registerTablePlugin(editor));
+
+		// Create persistent helper buttons (appended to editor-container)
+		const container = hostShadow.querySelector('.editor-container')!;
+
+		this.addRowBtn = document.createElement('button') as HTMLButtonElement;
+		this.addRowBtn.className = 'table-helper-btn table-add-row';
+		this.addRowBtn.type = 'button';
+		this.addRowBtn.title = 'Add row';
+		this.addRowBtn.textContent = '+';
+		this.addRowBtn.style.display = 'none';
+		this.addRowBtn.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.addRow();
+		});
+		this.addRowBtn.addEventListener('mouseenter', () => this.cancelHide());
+		this.addRowBtn.addEventListener('mouseleave', () => this.scheduleHide());
+		container.appendChild(this.addRowBtn);
+
+		this.addColBtn = document.createElement('button') as HTMLButtonElement;
+		this.addColBtn.className = 'table-helper-btn table-add-col';
+		this.addColBtn.type = 'button';
+		this.addColBtn.title = 'Add column';
+		this.addColBtn.textContent = '+';
+		this.addColBtn.style.display = 'none';
+		this.addColBtn.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.addCol();
+		});
+		this.addColBtn.addEventListener('mouseenter', () => this.cancelHide());
+		this.addColBtn.addEventListener('mouseleave', () => this.scheduleHide());
+		container.appendChild(this.addColBtn);
+
+		// Listen for mouse events on editor root
+		const root = editor.getRootElement();
+		if (root) {
+			const onMouseOver = (e: MouseEvent) => {
+				const table = (e.target as HTMLElement).closest('table');
+				if (table && root.contains(table)) {
+					this.cancelHide();
+					if (table !== this.activeTable) {
+						this.activeTable = table as HTMLElement;
+						this.positionHelpers();
+					}
+				}
+			};
+			const onMouseOut = (e: MouseEvent) => {
+				const related = e.relatedTarget as HTMLElement | null;
+				if (!related || (!related.closest('table') && !related.classList?.contains('table-helper-btn'))) {
+					this.scheduleHide();
+				}
+			};
+			root.addEventListener('mouseover', onMouseOver);
+			root.addEventListener('mouseout', onMouseOut);
+			this.cleanups.push(() => {
+				root.removeEventListener('mouseover', onMouseOver);
+				root.removeEventListener('mouseout', onMouseOut);
+			});
+		}
 	}
 
 	detach(): void {
 		this.cleanups.forEach(fn => fn());
 		this.cleanups = [];
+		this.addRowBtn?.remove();
+		this.addColBtn?.remove();
+		this.addRowBtn = null;
+		this.addColBtn = null;
+		this.activeTable = null;
 		this.editor = null;
 		this.hostShadow = null;
+	}
+
+	private positionHelpers() {
+		if (!this.addRowBtn || !this.addColBtn || !this.activeTable || !this.hostShadow) return;
+		const container = this.hostShadow.querySelector('.editor-container')!;
+		const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
+		const tableRect = this.activeTable.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		const scrollTop = editorRoot?.scrollTop || 0;
+
+		const top = tableRect.top - containerRect.top + scrollTop;
+		const left = tableRect.left - containerRect.left;
+
+		this.addRowBtn.style.display = 'flex';
+		this.addRowBtn.style.top = (top + tableRect.height) + 'px';
+		this.addRowBtn.style.left = left + 'px';
+		this.addRowBtn.style.width = tableRect.width + 'px';
+
+		this.addColBtn.style.display = 'flex';
+		this.addColBtn.style.top = top + 'px';
+		this.addColBtn.style.left = (left + tableRect.width) + 'px';
+		this.addColBtn.style.height = tableRect.height + 'px';
+	}
+
+	private hideHelpers() {
+		if (this.addRowBtn) this.addRowBtn.style.display = 'none';
+		if (this.addColBtn) this.addColBtn.style.display = 'none';
+		this.activeTable = null;
+	}
+
+	private scheduleHide() {
+		this.cancelHide();
+		this.hideTimeout = setTimeout(() => this.hideHelpers(), 200);
+	}
+
+	private cancelHide() {
+		if (this.hideTimeout) {
+			clearTimeout(this.hideTimeout);
+			this.hideTimeout = null;
+		}
+	}
+
+	private addRow() {
+		if (!this.activeTable) return;
+		this.editor?.update(() => {
+			const tableNode = this.getTableNodeFromDom(this.activeTable!);
+			if (!tableNode) return;
+			const lastRow = tableNode.getLastChild();
+			if (!$isTableRowNode(lastRow)) return;
+			const lastCell = lastRow.getLastChild();
+			if (!$isTableCellNode(lastCell)) return;
+			lastCell.selectEnd();
+			$insertTableRowAtSelection(true);
+		});
+		setTimeout(() => this.positionHelpers(), 50);
+	}
+
+	private addCol() {
+		if (!this.activeTable) return;
+		this.editor?.update(() => {
+			const tableNode = this.getTableNodeFromDom(this.activeTable!);
+			if (!tableNode) return;
+			const firstRow = tableNode.getFirstChild();
+			if (!$isTableRowNode(firstRow)) return;
+			const lastCell = firstRow.getLastChild();
+			if (!$isTableCellNode(lastCell)) return;
+			lastCell.selectEnd();
+			$insertTableColumnAtSelection(true);
+		});
+		setTimeout(() => this.positionHelpers(), 50);
+	}
+
+	private getTableNodeFromDom(tableDom: HTMLElement): TableNode | null {
+		if (!this.editor) return null;
+		let result: TableNode | null = null;
+		this.editor.getEditorState().read(() => {
+			const editorState = this.editor!.getEditorState();
+			editorState._nodeMap.forEach((node: LexicalNode) => {
+				if ($isTableNode(node)) {
+					const dom = this.editor!.getElementByKey(node.getKey());
+					if (dom === tableDom) {
+						result = node as TableNode;
+					}
+				}
+			});
+		});
+		return result;
 	}
 
 	private async showTableDialog() {

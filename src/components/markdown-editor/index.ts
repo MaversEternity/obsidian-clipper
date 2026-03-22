@@ -135,6 +135,17 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			.editor-root td { background: transparent; }
 			.editor-root td p, .editor-root th p { margin: 0; }
+			/* Table helper buttons */
+			.table-helper-btn {
+				position: absolute; z-index: 10;
+				display: none; align-items: center; justify-content: center;
+				background: var(--background-secondary); border: 1px solid var(--divider-color);
+				color: var(--text-faint); cursor: pointer;
+				font-size: 14px; font-weight: 500; padding: 0;
+			}
+			.table-helper-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+			.table-add-row { height: 18px; border-radius: 0 0 4px 4px; border-top: none; }
+			.table-add-col { width: 18px; border-radius: 0 4px 4px 0; border-left: none; }
 			.tok-comment { color: var(--text-faint); font-style: italic; }
 			.tok-keyword { color: var(--text-accent); }
 			.tok-string { color: var(--color-green, #a3be8c); }
