@@ -26,6 +26,7 @@ const ICONS = {
 	ol: '<line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
 	checklist: '<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><line x1="13" y1="6" x2="21" y2="6"/><line x1="13" y1="12" x2="21" y2="12"/><line x1="13" y1="18" x2="21" y2="18"/>',
 	heading: '<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/>',
+	codeblock: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m9 10-2 2 2 2"/><path d="m15 10 2 2-2 2"/>',
 };
 
 const BASE_ITEMS: ToolbarItem[] = [
@@ -42,6 +43,7 @@ const BASE_ITEMS: ToolbarItem[] = [
 	{ type: 'button', action: 'italic', title: 'Italic', icon: ICONS.italic },
 	{ type: 'button', action: 'strikethrough', title: 'Strikethrough', icon: ICONS.strikethrough },
 	{ type: 'button', action: 'code', title: 'Inline code', icon: ICONS.code },
+	{ type: 'button', action: 'codeblock', title: 'Code block', icon: ICONS.codeblock },
 	{ type: 'separator' },
 	{ type: 'button', action: 'quote', title: 'Blockquote', icon: ICONS.quote },
 	{ type: 'button', action: 'ul', title: 'Bullet list', icon: ICONS.ul },

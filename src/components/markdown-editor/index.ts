@@ -1,7 +1,8 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isTextNode } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isTextNode, $getNodeByKey } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
+import { $createCodeNode, $isCodeNode, CodeNode } from '@lexical/code';
 import { $isLinkNode } from '@lexical/link';
 import { $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType } from '@lexical/utils';
@@ -23,6 +24,8 @@ export class MarkdownEditorElement extends HTMLElement {
 	private plugins: EditorPlugin[] = [];
 	private pluginTransformers: Transformer[] = [];
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private langSelector: HTMLElement | null = null;
+	private currentCodeNodeKey: string | null = null;
 
 	constructor() {
 		super();
@@ -68,7 +71,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		const style = document.createElement('style');
 		style.textContent = `
 			:host { display: flex; flex-grow: 1; position: relative; }
-			.editor-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; position: relative; }
+			.editor-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; position: relative; overflow: hidden; }
 			.editor-root {
 				flex-grow: 1; outline: none;
 				padding: 10px var(--popup-padding, 12px);
@@ -116,6 +119,31 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			.toolbar-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+			.tok-comment { color: var(--text-faint); font-style: italic; }
+			.tok-keyword { color: var(--text-accent); }
+			.tok-string { color: var(--color-green, #a3be8c); }
+			.tok-number, .tok-boolean { color: var(--color-orange, #d08770); }
+			.tok-function { color: var(--color-blue, #81a1c1); }
+			.tok-operator, .tok-punctuation { color: var(--text-muted); }
+			.tok-property, .tok-attr { color: var(--color-cyan, #88c0d0); }
+			.tok-class-name, .tok-builtin { color: var(--color-yellow, #ebcb8b); }
+			.tok-tag { color: var(--color-red, #bf616a); }
+			.tok-regex, .tok-important { color: var(--color-orange, #d08770); }
+			.tok-variable { color: var(--text-normal); }
+			.tok-selector { color: var(--color-green, #a3be8c); }
+			.code-lang-selector {
+				position: absolute; z-index: 10;
+				display: flex; align-items: center; gap: 4px;
+				padding: 2px 4px; border-radius: var(--radius-s);
+				background: var(--background-secondary); border: 1px solid var(--divider-color);
+				box-shadow: var(--shadow-s);
+			}
+			.code-lang-selector select {
+				background: transparent; border: none; color: var(--text-normal);
+				font-size: 11px; font-family: var(--font-monospace-default);
+				cursor: pointer; outline: none; padding: 2px 4px;
+			}
+			.code-lang-selector select option { background: var(--background-primary); }
 			.toolbar-separator { width: 1px; height: 16px; background: var(--divider-color); margin: 0 4px; }
 			.dropdown {
 				position: absolute; bottom: 100%; left: 0; right: 0; max-height: 200px;
@@ -183,6 +211,55 @@ export class MarkdownEditorElement extends HTMLElement {
 		}
 	}
 
+	private static LANGUAGES = [
+		'', 'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp',
+		'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'sql', 'html', 'css',
+		'scss', 'json', 'yaml', 'xml', 'markdown', 'bash', 'shell', 'powershell',
+		'docker', 'lua', 'r', 'scala', 'dart', 'elixir', 'haskell', 'clojure',
+	];
+
+	private showLangSelector(currentLang: string, codeDom: HTMLElement) {
+		this.hideLangSelector();
+		const selector = document.createElement('div');
+		selector.className = 'code-lang-selector';
+
+		const select = document.createElement('select');
+		for (const lang of MarkdownEditorElement.LANGUAGES) {
+			const opt = document.createElement('option');
+			opt.value = lang;
+			opt.textContent = lang || 'plain text';
+			if (lang === currentLang) opt.selected = true;
+			select.appendChild(opt);
+		}
+		select.addEventListener('change', () => {
+			this.editor?.update(() => {
+				const node = $getNodeByKey(this.currentCodeNodeKey!) as InstanceType<typeof CodeNode> | null;
+				if (node && $isCodeNode(node)) {
+					node.setLanguage(select.value || undefined as any);
+				}
+			});
+		});
+		// Don't steal focus from editor
+		select.addEventListener('mousedown', (e) => e.stopPropagation());
+
+		selector.appendChild(select);
+		const container = this.shadow.querySelector('.editor-container')!;
+		container.appendChild(selector);
+		this.langSelector = selector;
+
+		// Position relative to editor container
+		const codeRect = codeDom.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		selector.style.top = (codeRect.top - containerRect.top + container.scrollTop + 4) + 'px';
+		selector.style.right = '16px';
+	}
+
+	private hideLangSelector() {
+		this.langSelector?.remove();
+		this.langSelector = null;
+		this.currentCodeNodeKey = null;
+	}
+
 	private updateToolbarState() {
 		if (!this.toolbarHandle) return;
 		const active = new Set<string>();
@@ -209,6 +286,19 @@ export class MarkdownEditorElement extends HTMLElement {
 			if ($isQuoteNode(element)) {
 				active.add('quote');
 			}
+			const codeParent = $isCodeNode(element) ? element : $isCodeNode(element.getParent()) ? element.getParent() : null;
+			if (codeParent && $isCodeNode(codeParent)) {
+				active.add('codeblock');
+				const key = codeParent.getKey();
+				const lang = codeParent.getLanguage() || '';
+				if (key !== this.currentCodeNodeKey) {
+					this.currentCodeNodeKey = key;
+					const codeDom = this.editor!.getElementByKey(key);
+					if (codeDom) {
+						setTimeout(() => this.showLangSelector(lang, codeDom), 0);
+					}
+				}
+			}
 			if ($isLinkNode(element) || $isLinkNode(element.getParent())) {
 				active.add('link');
 			}
@@ -221,6 +311,9 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 		}
 
+		if (!active.has('codeblock')) {
+			this.hideLangSelector();
+		}
 		this.toolbarHandle.setActiveStates(active);
 	}
 
@@ -246,6 +339,14 @@ export class MarkdownEditorElement extends HTMLElement {
 					const selection = $getSelection();
 					if ($isRangeSelection(selection)) {
 						$setBlocksType(selection, () => $createHeadingNode(action as HeadingTagType));
+					}
+				});
+				break;
+			case 'codeblock':
+				this.editor.update(() => {
+					const selection = $getSelection();
+					if ($isRangeSelection(selection)) {
+						$setBlocksType(selection, () => $createCodeNode());
 					}
 				});
 				break;

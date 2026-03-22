@@ -2,7 +2,7 @@ import { createEditor, type Klass, type LexicalEditor, type LexicalNode } from '
 import { registerRichText } from '@lexical/rich-text';
 import { registerList, ListNode, ListItemNode } from '@lexical/list';
 import { LinkNode, AutoLinkNode } from '@lexical/link';
-import { CodeNode, CodeHighlightNode } from '@lexical/code';
+import { CodeNode, CodeHighlightNode, registerCodeHighlighting } from '@lexical/code';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import {
 	$convertFromMarkdownString,
@@ -49,6 +49,7 @@ export function createMarkdownEditor(config: EditorConfig): LexicalEditor {
 	const allTransformers = [...(config.extraTransformers || []), ...OBSIDIAN_TRANSFORMERS];
 	registerMarkdownShortcuts(editor, allTransformers);
 	registerHistory(editor, createEmptyHistoryState(), 300);
+	registerCodeHighlighting(editor);
 
 	// Render DecoratorNode outputs into the DOM (vanilla Lexical doesn't do this automatically)
 	editor.registerDecoratorListener((decorators) => {
