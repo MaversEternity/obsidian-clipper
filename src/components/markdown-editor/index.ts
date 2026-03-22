@@ -372,6 +372,7 @@ export class MarkdownEditorElement extends HTMLElement {
 			.block-drag-handle:hover { opacity: 1 !important; color: var(--text-normal); background: var(--background-modifier-hover); }
 			.block-drag-handle[data-visible] { opacity: 0.4; }
 			.block-drag-handle:active { cursor: grabbing; }
+			.block-drag-handle[data-dragging] { opacity: 1 !important; background: var(--interactive-accent); color: var(--text-on-accent); cursor: grabbing; }
 			.block-drop-indicator {
 				position: absolute; left: 20px; right: 10px; height: 2px;
 				background: var(--interactive-accent); z-index: 15;
@@ -610,6 +611,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
 			if (!draggedBlockKey) return;
 
+			handle.setAttribute('data-dragging', '');
+
 			// Ghost image
 			if (e.dataTransfer) {
 				e.dataTransfer.effectAllowed = "move";
@@ -648,6 +651,11 @@ export class MarkdownEditorElement extends HTMLElement {
 			indicator.style.top = `${indicatorY - 1}px`;
 			indicator.setAttribute("data-visible", "");
 
+			// Move handle with mouse (GPU-composited)
+			const handleOrigTop = parseFloat(handle.style.top) || 0;
+			const mouseY = e.clientY - containerRect.top - 9;
+			handle.style.transform = `translateY(${mouseY - handleOrigTop}px)`;
+
 			this.editor.update(
 				() => {
 					const node = $getNearestNodeFromDOMNode(block);
@@ -661,6 +669,8 @@ export class MarkdownEditorElement extends HTMLElement {
 		const cleanup = () => {
 			indicator.removeAttribute("data-visible");
 			handle.removeAttribute("data-visible");
+			handle.removeAttribute('data-dragging');
+			handle.style.transform = '';
 			draggedBlockKey = null;
 			dropTargetKey = null;
 			// Restore styles on all blocks
