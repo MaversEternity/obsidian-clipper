@@ -283,9 +283,16 @@ function setupMessageListeners() {
 			sendResponse({ success: true });
 		} else if (request.action === "contentPicked") {
 			const noteContentField = document.getElementById('note-content-field') as HTMLElement & { value: string };
-			if (noteContentField && request.text) {
-				const quote = `\n\n> ${request.text.replace(/\n/g, '\n> ')}`;
-				noteContentField.value += quote;
+			if (noteContentField && request.markdown) {
+				// Insert at cursor position via the editor's insertAtCursor method
+				const editor = noteContentField as any;
+				if (typeof editor.insertAtCursor === 'function') {
+					editor.insertAtCursor(request.markdown);
+				} else {
+					// Fallback: append
+					const current = noteContentField.value;
+					noteContentField.value = current + (current ? '\n\n' : '') + request.markdown;
+				}
 			}
 			sendResponse({ success: true });
 		}

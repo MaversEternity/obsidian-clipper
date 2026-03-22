@@ -1,4 +1,4 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey, $getRoot, $createParagraphNode, $createTextNode, $insertNodes } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
@@ -583,6 +583,57 @@ export class MarkdownEditorElement extends HTMLElement {
 
 	focus() {
 		this.editorRoot?.focus();
+	}
+
+	/**
+	 * Insert markdown at the current cursor position.
+	 * If no cursor, appends to the end.
+	 */
+	insertAtCursor(markdown: string) {
+		if (!this.editor) return;
+
+		// Find cursor's top-level block, insert after it
+		this.editor.update(() => {
+			const root = $getRoot();
+			const selection = $getSelection();
+
+			let insertAfter: LexicalNode | null = null;
+			if ($isRangeSelection(selection)) {
+				let node = selection.anchor.getNode();
+				while (node.getParent() && node.getParent() !== root) {
+					node = node.getParent()!;
+				}
+				insertAfter = node;
+			}
+
+			// Create paragraph nodes from markdown lines
+			const lines = markdown.split('\n');
+			const newNodes: LexicalNode[] = [];
+			for (const line of lines) {
+				const p = $createParagraphNode();
+				if (line) p.append($createTextNode(line));
+				newNodes.push(p);
+			}
+
+			// Insert after cursor block, or append to root
+			if (insertAfter) {
+				for (let i = newNodes.length - 1; i >= 0; i--) {
+					insertAfter.insertAfter(newNodes[i]);
+				}
+			} else {
+				for (const node of newNodes) {
+					root.append(node);
+				}
+			}
+		});
+
+		// Round-trip: export → re-import to convert raw markdown text into proper nodes
+		// Use requestAnimationFrame to ensure the update above has committed
+		requestAnimationFrame(() => {
+			if (!this.editor) return;
+			const md = getMarkdown(this.editor, this.pluginTransformers);
+			setMarkdown(this.editor, md, this.pluginTransformers);
+		});
 	}
 
 	static get observedAttributes() {

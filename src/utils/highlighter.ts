@@ -291,7 +291,7 @@ export function createHighlighterMenu() {
 	} else {
 		const noHighlights = document.createElement('span');
 		noHighlights.className = 'no-highlights';
-		noHighlights.textContent = 'Select elements to highlight';
+		noHighlights.textContent = 'Select content to clip';
 		menu.appendChild(noHighlights);
 	}
 	

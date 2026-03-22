@@ -87,19 +87,67 @@ export function handleMouseUp(event: MouseEvent | TouchEvent) {
 	const selection = window.getSelection();
 
 	if (contentPickerMode) {
-		// In picker mode, send text to popup instead of highlighting
-		let text = '';
+		// In picker mode, send content to popup with type info
+		let markdown = '';
 		if (selection && !selection.isCollapsed) {
-			text = selection.toString().trim();
+			const text = selection.toString().trim();
+			if (text) markdown = text;
 			selection.removeAllRanges();
 		} else {
-			const block = target.closest('p, h1, h2, h3, h4, h5, h6, li, pre, blockquote, td, th, figcaption, table');
+			const block = target.closest('p, h1, h2, h3, h4, h5, h6, li, ul, ol, pre, blockquote, td, th, figcaption, table, img, a, figure');
 			if (block) {
-				text = (block.textContent || '').trim();
+				const tag = block.tagName.toLowerCase();
+				const text = (block.textContent || '').trim();
+				if (tag === 'img') {
+					const img = block as HTMLImageElement;
+					markdown = `![${img.alt || ''}](${img.src})`;
+				} else if (tag === 'figure') {
+					const img = block.querySelector('img');
+					const caption = block.querySelector('figcaption');
+					if (img) markdown = `![${caption?.textContent?.trim() || img.alt || ''}](${img.src})`;
+					else markdown = text;
+				} else if (tag === 'a') {
+					const a = block as HTMLAnchorElement;
+					markdown = `[${text}](${a.href})`;
+				} else if (tag === 'table') {
+					const rows = Array.from(block.querySelectorAll('tr'));
+					const lines: string[] = [];
+					rows.forEach((row, i) => {
+						const cells = Array.from(row.querySelectorAll('td, th')).map(c => (c.textContent || '').trim().replace(/\|/g, '\\|'));
+						lines.push('| ' + cells.join(' | ') + ' |');
+						if (i === 0) lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
+					});
+					markdown = lines.join('\n');
+				} else if (tag === 'pre') {
+					const code = block.querySelector('code');
+					const lang = code?.className.match(/language-(\w+)/)?.[1] || '';
+					markdown = '```' + lang + '\n' + text + '\n```';
+				} else if (tag === 'blockquote') {
+					markdown = text.split('\n').map(l => '> ' + l).join('\n');
+				} else if (tag.match(/^h[1-6]$/)) {
+					const level = parseInt(tag[1]);
+					markdown = '#'.repeat(level) + ' ' + text;
+				} else if (tag === 'li') {
+					const parent = block.parentElement;
+					if (parent?.tagName === 'OL') {
+						const idx = Array.from(parent.children).indexOf(block) + 1;
+						markdown = `${idx}. ${text}`;
+					} else {
+						markdown = `- ${text}`;
+					}
+				} else if (tag === 'ul' || tag === 'ol') {
+					const items = Array.from(block.querySelectorAll(':scope > li'));
+					markdown = items.map((li, i) => {
+						const t = (li.textContent || '').trim();
+						return tag === 'ol' ? `${i + 1}. ${t}` : `- ${t}`;
+					}).join('\n');
+				} else {
+					markdown = text;
+				}
 			}
 		}
-		if (text) {
-			browser.runtime.sendMessage({ action: 'contentPicked', text });
+		if (markdown) {
+			browser.runtime.sendMessage({ action: 'contentPicked', markdown });
 		}
 		return;
 	}
