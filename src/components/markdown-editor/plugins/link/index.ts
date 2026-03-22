@@ -1,9 +1,23 @@
-import type { Klass, LexicalEditor, LexicalNode } from 'lexical';
-import type { Transformer } from '@lexical/markdown';
-import { $getSelection, $isRangeSelection, $createTextNode, $isTextNode, $getNearestNodeFromDOMNode, $getNodeByKey, PASTE_COMMAND, COMMAND_PRIORITY_HIGH } from 'lexical';
-import { $createLinkNode, $isLinkNode, LinkNode, $toggleLink } from '@lexical/link';
-import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
-import { EditorPopover } from '../../components/editor-popover';
+import type { Klass, LexicalEditor, LexicalNode } from "lexical";
+import type { Transformer } from "@lexical/markdown";
+import {
+	$getSelection,
+	$isRangeSelection,
+	$createTextNode,
+	$isTextNode,
+	$getNearestNodeFromDOMNode,
+	$getNodeByKey,
+	PASTE_COMMAND,
+	COMMAND_PRIORITY_HIGH,
+} from "lexical";
+import {
+	$createLinkNode,
+	$isLinkNode,
+	LinkNode,
+	$toggleLink,
+} from "@lexical/link";
+import type { EditorPlugin, ToolbarButtonDef } from "../../plugin-interface";
+import { EditorPopover } from "../../components/editor-popover";
 
 const URL_REGEX = /^(https?:\/\/|www\.)[^\s]+$/;
 
@@ -12,13 +26,13 @@ class LinkFloatingToolbar extends HTMLElement {
 
 	constructor() {
 		super();
-		this.shadow = this.attachShadow({ mode: 'open' });
+		this.shadow = this.attachShadow({ mode: "open" });
 	}
 
 	show(url: string, rect: DOMRect, onEdit: () => void, onRemove: () => void) {
-		this.shadow.innerHTML = '';
+		this.shadow.innerHTML = "";
 
-		const style = document.createElement('style');
+		const style = document.createElement("style");
 		style.textContent = `
 			:host {
 				position: absolute; z-index: 200;
@@ -46,31 +60,33 @@ class LinkFloatingToolbar extends HTMLElement {
 		`;
 		this.shadow.appendChild(style);
 
-		const toolbar = document.createElement('div');
-		toolbar.className = 'link-toolbar';
+		const toolbar = document.createElement("div");
+		toolbar.className = "link-toolbar";
 
-		const link = document.createElement('a');
+		const link = document.createElement("a");
 		link.href = url;
-		link.target = '_blank';
+		link.target = "_blank";
 		link.textContent = url;
 		link.title = url;
 
-		const sep = document.createElement('span');
-		sep.className = 'separator';
+		const sep = document.createElement("span");
+		sep.className = "separator";
 
-		const editBtn = document.createElement('button');
-		editBtn.title = 'Edit link';
-		editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
-		editBtn.addEventListener('click', (e) => {
+		const editBtn = document.createElement("button");
+		editBtn.title = "Edit link";
+		editBtn.innerHTML =
+			'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+		editBtn.addEventListener("click", (e) => {
 			e.preventDefault();
 			e.stopPropagation();
 			onEdit();
 		});
 
-		const removeBtn = document.createElement('button');
-		removeBtn.title = 'Remove link';
-		removeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-		removeBtn.addEventListener('click', (e) => {
+		const removeBtn = document.createElement("button");
+		removeBtn.title = "Remove link";
+		removeBtn.innerHTML =
+			'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+		removeBtn.addEventListener("click", (e) => {
 			e.preventDefault();
 			e.stopPropagation();
 			onRemove();
@@ -92,8 +108,8 @@ class LinkFloatingToolbar extends HTMLElement {
 	}
 }
 
-if (!customElements.get('link-floating-toolbar')) {
-	customElements.define('link-floating-toolbar', LinkFloatingToolbar);
+if (!customElements.get("link-floating-toolbar")) {
+	customElements.define("link-floating-toolbar", LinkFloatingToolbar);
 }
 
 export class EditorPluginLink extends HTMLElement implements EditorPlugin {
@@ -112,8 +128,8 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 	getToolbarButton(): ToolbarButtonDef | null {
 		return {
-			action: 'link',
-			title: 'Insert link',
+			action: "link",
+			title: "Insert link",
 			icon: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
 			onAction: () => this.showLinkDialog(),
 		};
@@ -125,8 +141,8 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 		// Ctrl/Cmd+K shortcut
 		const root = editor.getRootElement();
-		root?.addEventListener('keydown', (e) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+		root?.addEventListener("keydown", (e) => {
+			if ((e.metaKey || e.ctrlKey) && e.key === "k") {
 				e.preventDefault();
 				this.showLinkDialog();
 			}
@@ -136,7 +152,7 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 		editor.registerCommand(
 			PASTE_COMMAND,
 			(event: ClipboardEvent) => {
-				const text = event.clipboardData?.getData('text/plain')?.trim();
+				const text = event.clipboardData?.getData("text/plain")?.trim();
 				if (!text || !URL_REGEX.test(text)) return false;
 
 				event.preventDefault();
@@ -168,7 +184,7 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 		// Click on links — show floating toolbar
 		const onClick = (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
-			const linkEl = target.closest('a');
+			const linkEl = target.closest("a");
 
 			if (!linkEl) {
 				this.dismissFloatingToolbar();
@@ -179,8 +195,17 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 			this.showFloatingToolbar(linkEl);
 		};
 
-		root?.addEventListener('click', onClick);
-		this.cleanupClickListener = () => root?.removeEventListener('click', onClick);
+		root?.addEventListener("click", onClick);
+
+		// Dismiss floating toolbar on scroll
+		const editorRoot = this.hostShadow.querySelector(".editor-root");
+		const onScroll = () => this.dismissFloatingToolbar();
+		editorRoot?.addEventListener("scroll", onScroll);
+
+		this.cleanupClickListener = () => {
+			root?.removeEventListener("click", onClick);
+			editorRoot?.removeEventListener("scroll", onScroll);
+		};
 	}
 
 	detach(): void {
@@ -195,8 +220,8 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 		this.dismissFloatingToolbar();
 
-		const url = linkEl.getAttribute('href') || '';
-		const container = this.hostShadow.querySelector('.editor-container');
+		const url = linkEl.getAttribute("href") || "";
+		const container = this.hostShadow.querySelector(".editor-container");
 		if (!container) return;
 
 		const containerRect = container.getBoundingClientRect();
@@ -230,32 +255,48 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 		this.dismissFloatingToolbar();
 
-		const currentText = linkEl.textContent || '';
+		const currentText = linkEl.textContent || "";
 
 		// Capture the node key before async popover — DOM ref may go stale
 		let nodeKey: string | null = null;
-		this.editor.update(() => {
-			let lexicalNode = $getNearestNodeFromDOMNode(linkEl);
-			if (!lexicalNode) return;
-			let linkNode = $isLinkNode(lexicalNode) ? lexicalNode : lexicalNode.getParent();
-			if (linkNode && $isLinkNode(linkNode)) {
-				nodeKey = linkNode.getKey();
-			}
-		}, { discrete: true });
+		this.editor.update(
+			() => {
+				let lexicalNode = $getNearestNodeFromDOMNode(linkEl);
+				if (!lexicalNode) return;
+				let linkNode = $isLinkNode(lexicalNode)
+					? lexicalNode
+					: lexicalNode.getParent();
+				if (linkNode && $isLinkNode(linkNode)) {
+					nodeKey = linkNode.getKey();
+				}
+			},
+			{ discrete: true },
+		);
 
 		if (!nodeKey) return;
 
 		const popover = new EditorPopover();
-		const container = this.hostShadow.querySelector('.editor-container');
+		const container = this.hostShadow.querySelector(".editor-container");
 		container?.appendChild(popover);
 
 		const result = await popover.show({
-			title: 'Edit Link',
+			title: "Edit Link",
 			fields: [
-				{ name: 'text', label: 'Text', placeholder: 'Link text', value: currentText },
-				{ name: 'url', label: 'Link', placeholder: 'https://', value: currentUrl, required: true },
+				{
+					name: "text",
+					label: "Text",
+					placeholder: "Link text",
+					value: currentText,
+				},
+				{
+					name: "url",
+					label: "Link",
+					placeholder: "https://",
+					value: currentUrl,
+					required: true,
+				},
 			],
-			submitLabel: 'Save',
+			submitLabel: "Save",
 			editor: this.editor || undefined,
 			anchor: linkEl,
 		});
@@ -297,8 +338,8 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 	private async showLinkDialog() {
 		if (!this.editor || !this.hostShadow) return;
 
-		let selectedText = '';
-		let existingUrl = '';
+		let selectedText = "";
+		let existingUrl = "";
 		let existingKey: string | null = null;
 		let anchorDom: HTMLElement | null = null;
 
@@ -309,7 +350,11 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 			// Check if cursor is inside a link
 			const node = selection.anchor.getNode();
 			const parent = node.getParent();
-			const linkNode = $isLinkNode(parent) ? parent : $isLinkNode(node) ? node : null;
+			const linkNode = $isLinkNode(parent)
+				? parent
+				: $isLinkNode(node)
+					? node
+					: null;
 			if (linkNode && $isLinkNode(linkNode)) {
 				existingUrl = linkNode.getURL();
 				selectedText = linkNode.getTextContent();
@@ -320,16 +365,27 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 		const isEditing = !!existingKey;
 		const popover = new EditorPopover();
-		const container = this.hostShadow.querySelector('.editor-container');
+		const container = this.hostShadow.querySelector(".editor-container");
 		container?.appendChild(popover);
 
 		const result = await popover.show({
-			title: isEditing ? 'Edit Link' : 'Insert Link',
+			title: isEditing ? "Edit Link" : "Insert Link",
 			fields: [
-				{ name: 'text', label: 'Text', placeholder: 'Link text', value: selectedText },
-				{ name: 'url', label: 'Link', placeholder: 'https://', value: existingUrl, required: true },
+				{
+					name: "text",
+					label: "Text",
+					placeholder: "Link text",
+					value: selectedText,
+				},
+				{
+					name: "url",
+					label: "Link",
+					placeholder: "https://",
+					value: existingUrl,
+					required: true,
+				},
 			],
-			submitLabel: isEditing ? 'Update' : 'Insert',
+			submitLabel: isEditing ? "Update" : "Insert",
 			editor: this.editor || undefined,
 			anchor: anchorDom || undefined,
 		});
@@ -340,7 +396,10 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 					const linkNode = $getNodeByKey(existingKey!);
 					if (!linkNode || !$isLinkNode(linkNode)) return;
 					linkNode.setURL(result.url);
-					if (result.text && result.text !== linkNode.getTextContent()) {
+					if (
+						result.text &&
+						result.text !== linkNode.getTextContent()
+					) {
 						const firstChild = linkNode.getFirstChild();
 						if ($isTextNode(firstChild)) {
 							firstChild.setTextContent(result.text);
@@ -375,6 +434,6 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 	}
 }
 
-if (!customElements.get('editor-plugin-link')) {
-	customElements.define('editor-plugin-link', EditorPluginLink);
+if (!customElements.get("editor-plugin-link")) {
+	customElements.define("editor-plugin-link", EditorPluginLink);
 }
