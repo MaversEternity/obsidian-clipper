@@ -5,7 +5,7 @@ import { $createLinkNode, $isLinkNode, LinkNode, $toggleLink } from '@lexical/li
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { EditorPopover } from '../../components/editor-popover';
 
-const URL_REGEX = /^https?:\/\/[^\s]+$/;
+const URL_REGEX = /^(https?:\/\/|www\.)[^\s]+$/;
 
 class LinkFloatingToolbar extends HTMLElement {
 	private shadow: ShadowRoot;
