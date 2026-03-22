@@ -1,12 +1,16 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey, $getRoot, $createParagraphNode, $createTextNode, $insertNodes } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, PASTE_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey, $getRoot, $createParagraphNode, $createTextNode, $insertNodes } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createCodeNode, $isCodeNode, CodeNode } from '@lexical/code';
-import { $isLinkNode } from '@lexical/link';
+import { $createLinkNode, $isLinkNode } from '@lexical/link';
+import { $createListNode, $createListItemNode } from '@lexical/list';
 import { $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType } from '@lexical/utils';
+import { $convertFromMarkdownString } from '@lexical/markdown';
 import { createMarkdownEditor, setMarkdown, getMarkdown } from './editor';
+import { OBSIDIAN_TRANSFORMERS } from './transformers';
+import { $createImageNode } from './nodes/ImageNode';
 import { createToolbar, type ToolbarHandle } from './toolbar';
 import { isEditorPlugin, type EditorPlugin, type ToolbarButtonDef } from './plugin-interface';
 
@@ -591,48 +595,48 @@ export class MarkdownEditorElement extends HTMLElement {
 	 */
 	insertAtCursor(markdown: string) {
 		if (!this.editor) return;
+		const allTransformers = [...this.pluginTransformers, ...OBSIDIAN_TRANSFORMERS];
 
-		// Find cursor's top-level block, insert after it
 		this.editor.update(() => {
 			const root = $getRoot();
 			const selection = $getSelection();
 
-			let insertAfter: LexicalNode | null = null;
+			// Find cursor block index
+			let insertIdx = root.getChildrenSize();
 			if ($isRangeSelection(selection)) {
 				let node = selection.anchor.getNode();
 				while (node.getParent() && node.getParent() !== root) {
 					node = node.getParent()!;
 				}
-				insertAfter = node;
+				insertIdx = root.getChildren().indexOf(node) + 1;
 			}
 
-			// Create paragraph nodes from markdown lines
-			const lines = markdown.split('\n');
-			const newNodes: LexicalNode[] = [];
-			for (const line of lines) {
-				const p = $createParagraphNode();
-				if (line) p.append($createTextNode(line));
-				newNodes.push(p);
-			}
+			// Detach existing children
+			const existing = root.getChildren();
+			for (const child of existing) child.remove();
 
-			// Insert after cursor block, or append to root
-			if (insertAfter) {
-				for (let i = newNodes.length - 1; i >= 0; i--) {
-					insertAfter.insertAfter(newNodes[i]);
-				}
-			} else {
-				for (const node of newNodes) {
-					root.append(node);
-				}
-			}
-		});
+			// Parse new markdown into empty root via Lexical transformers
+			$convertFromMarkdownString(markdown, allTransformers);
+			const newNodes = root.getChildren();
+			for (const child of newNodes) child.remove();
 
-		// Round-trip: export → re-import to convert raw markdown text into proper nodes
-		// Use requestAnimationFrame to ensure the update above has committed
-		requestAnimationFrame(() => {
-			if (!this.editor) return;
-			const md = getMarkdown(this.editor, this.pluginTransformers);
-			setMarkdown(this.editor, md, this.pluginTransformers);
+			// Reassemble at cursor position
+			const before = existing.slice(0, insertIdx);
+			const after = existing.slice(insertIdx);
+			for (const n of before) root.append(n);
+			for (const n of newNodes) root.append(n);
+			for (const n of after) root.append(n);
+
+			// Focus after inserted content
+			if (newNodes.length > 0) {
+				newNodes[newNodes.length - 1].selectEnd();
+				const lastKey = newNodes[newNodes.length - 1].getKey();
+				setTimeout(() => {
+					this.editorRoot?.focus();
+					const dom = this.editor?.getElementByKey(lastKey);
+					dom?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+				}, 0);
+			}
 		});
 	}
 
