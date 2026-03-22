@@ -1,6 +1,6 @@
 import type { Klass, LexicalEditor, LexicalNode } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
-import { $getSelection, $isRangeSelection, $createTextNode, $getNearestNodeFromDOMNode, PASTE_COMMAND, COMMAND_PRIORITY_HIGH } from 'lexical';
+import { $getSelection, $isRangeSelection, $createTextNode, $isTextNode, $getNearestNodeFromDOMNode, $getNodeByKey, PASTE_COMMAND, COMMAND_PRIORITY_HIGH } from 'lexical';
 import { $createLinkNode, $isLinkNode, LinkNode, $toggleLink } from '@lexical/link';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { EditorPopover } from '../../components/editor-popover';
@@ -232,6 +232,19 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 
 		const currentText = linkEl.textContent || '';
 
+		// Capture the node key before async popover — DOM ref may go stale
+		let nodeKey: string | null = null;
+		this.editor.update(() => {
+			let lexicalNode = $getNearestNodeFromDOMNode(linkEl);
+			if (!lexicalNode) return;
+			let linkNode = $isLinkNode(lexicalNode) ? lexicalNode : lexicalNode.getParent();
+			if (linkNode && $isLinkNode(linkNode)) {
+				nodeKey = linkNode.getKey();
+			}
+		}, { discrete: true });
+
+		if (!nodeKey) return;
+
 		const popover = new EditorPopover();
 		const container = this.hostShadow.querySelector('.editor-container');
 		container?.appendChild(popover);
@@ -245,19 +258,21 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 			submitLabel: 'Save',
 		});
 
+		const capturedKey = nodeKey;
 		if (result && result.url) {
 			this.editor.update(() => {
-				let lexicalNode = $getNearestNodeFromDOMNode(linkEl);
-				if (!lexicalNode) return;
-
-				// Walk up to find the LinkNode (DOM element might map to a child text node)
-				let linkNode = $isLinkNode(lexicalNode) ? lexicalNode : lexicalNode.getParent();
+				const linkNode = $getNodeByKey(capturedKey);
 				if (!linkNode || !$isLinkNode(linkNode)) return;
 
-				// Replace with a new link node to avoid empty-node auto-removal
-				const newLink = $createLinkNode(result.url);
-				newLink.append($createTextNode(result.text || result.url));
-				linkNode.replace(newLink);
+				linkNode.setURL(result.url);
+
+				if (result.text && result.text !== currentText) {
+					const children = linkNode.getChildren();
+					const firstChild = children[0];
+					if ($isTextNode(firstChild)) {
+						firstChild.setTextContent(result.text);
+					}
+				}
 			});
 		}
 
