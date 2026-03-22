@@ -5,6 +5,7 @@ import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, typ
 import { $createCodeNode, $isCodeNode, CodeNode } from '@lexical/code';
 import { $createLinkNode, $isLinkNode } from '@lexical/link';
 import { $createListNode, $createListItemNode } from '@lexical/list';
+import { $isTableCellNode } from '@lexical/table';
 import { $setBlocksType } from '@lexical/selection';
 import { $getNearestNodeOfType } from '@lexical/utils';
 import { $convertFromMarkdownString } from '@lexical/markdown';
@@ -525,6 +526,15 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			if ($isLinkNode(element) || $isLinkNode(element.getParent())) {
 				active.add('link');
+			}
+			// Table — check if inside a TableCellNode
+			let tableCheck: LexicalNode | null = element;
+			while (tableCheck) {
+				if ($isTableCellNode(tableCheck)) {
+					active.add('table');
+					break;
+				}
+				tableCheck = tableCheck.getParent();
 			}
 			const listNode = $getNearestNodeOfType(anchorNode, ListNode);
 			if (listNode) {

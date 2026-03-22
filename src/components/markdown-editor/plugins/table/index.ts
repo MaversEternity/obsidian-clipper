@@ -208,12 +208,10 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	private updatePosition() {
 		if (!this.helpers || !this.activeTable || !this.hostShadow) return;
 		const container = this.hostShadow.querySelector('.editor-container')!;
-		const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
-		const tRect = this.activeTable.getBoundingClientRect();
 		const cRect = container.getBoundingClientRect();
-		const scroll = editorRoot?.scrollTop || 0;
+		const tRect = this.activeTable.getBoundingClientRect();
 		const s = this.helpers.style;
-		s.setProperty('--t-top', `${tRect.top - cRect.top + scroll}px`);
+		s.setProperty('--t-top', `${tRect.top - cRect.top}px`);
 		s.setProperty('--t-left', `${tRect.left - cRect.left}px`);
 		s.setProperty('--t-width', `${tRect.width}px`);
 		s.setProperty('--t-height', `${tRect.height}px`);
@@ -222,11 +220,7 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 
 	private updateHandlePositions(cell: HTMLElement, row: HTMLElement, table: HTMLElement) {
 		if (!this.helpers || !this.hostShadow) return;
-		const container = this.hostShadow.querySelector('.editor-container')!;
-		const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
 		const tRect = table.getBoundingClientRect();
-		const cRect = container.getBoundingClientRect();
-		const scroll = editorRoot?.scrollTop || 0;
 		const rRect = row.getBoundingClientRect();
 		const cellRect = cell.getBoundingClientRect();
 		const s = this.helpers.style;
