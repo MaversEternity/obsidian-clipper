@@ -2,7 +2,8 @@ import {
 	type LexicalEditor, type Klass, type LexicalNode,
 	$createParagraphNode, $createTextNode,
 } from 'lexical';
-import type { Transformer, ElementTransformer } from '@lexical/markdown';
+import type { Transformer, MultilineElementTransformer } from '@lexical/markdown';
+import type { ElementNode } from 'lexical';
 import {
 	TableNode, TableRowNode, TableCellNode,
 	$createTableNode, $createTableRowNode, $createTableCellNode,
@@ -15,17 +16,17 @@ import {
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { EditorPopover } from '../../components/editor-popover';
 
-const TABLE_TRANSFORMER: ElementTransformer = {
+const TABLE_LINE_RE = /^\|(.+)\|[ \t]*$/;
+const SEPARATOR_RE = /^\|[\s\-:|]+\|$/;
+
+const TABLE_TRANSFORMER: MultilineElementTransformer = {
 	dependencies: [TableNode, TableRowNode, TableCellNode],
 	export: (node: LexicalNode) => {
 		if (!$isTableNode(node)) return null;
-
 		const rows = node.getChildren();
 		if (rows.length === 0) return null;
-
 		const lines: string[] = [];
 		let isFirstRow = true;
-
 		for (const row of rows) {
 			if (!$isTableRowNode(row)) continue;
 			const cells = row.getChildren();
@@ -34,21 +35,55 @@ const TABLE_TRANSFORMER: ElementTransformer = {
 				return cell.getTextContent().replace(/\|/g, '\\|').trim();
 			});
 			lines.push('| ' + cellTexts.join(' | ') + ' |');
-
 			if (isFirstRow) {
 				lines.push('| ' + cellTexts.map(() => '---').join(' | ') + ' |');
 				isFirstRow = false;
 			}
 		}
-
 		return lines.join('\n');
 	},
-	regExp: /^\|(.+)\|[ \t]*$/,
-	replace: (_parentNode, _children, _match, isImport) => {
-		if (!isImport) return false;
-		return false;
+	regExpStart: TABLE_LINE_RE,
+	handleImportAfterStartMatch: ({ lines, startLineIndex, rootNode }) => {
+		// Consume all consecutive table lines
+		let endIndex = startLineIndex;
+		for (let i = startLineIndex + 1; i < lines.length; i++) {
+			if (TABLE_LINE_RE.test(lines[i].trim())) {
+				endIndex = i;
+			} else {
+				break;
+			}
+		}
+		// Need at least 2 lines (header + separator)
+		if (endIndex === startLineIndex) return null;
+
+		// Collect all lines and filter separator rows
+		const allLines = lines.slice(startLineIndex, endIndex + 1);
+		const dataLines = allLines.filter(line => !SEPARATOR_RE.test(line.trim()));
+		if (dataLines.length === 0) return null;
+
+		// Build table node
+		const tableNode = $createTableNode();
+		dataLines.forEach((line, rowIndex) => {
+			const cells = line.split('|').slice(1, -1).map(c => c.trim());
+			const rowNode = $createTableRowNode();
+			cells.forEach(cellText => {
+				const headerState = rowIndex === 0
+					? TableCellHeaderStates.ROW
+					: TableCellHeaderStates.NO_STATUS;
+				const cellNode = $createTableCellNode(headerState);
+				const paragraph = $createParagraphNode();
+				paragraph.append($createTextNode(cellText.replace(/\\\|/g, '|')));
+				cellNode.append(paragraph);
+				rowNode.append(cellNode);
+			});
+			tableNode.append(rowNode);
+		});
+
+		rootNode.append(tableNode);
+		return [true, endIndex];
 	},
-	type: 'element',
+	replace: () => {},
+	type: 'multiline-element',
 };
 
 export class EditorPluginTable extends HTMLElement implements EditorPlugin {
@@ -61,21 +96,13 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	private colHandle: HTMLElement | null = null;
 	private activeTable: HTMLElement | null = null;
 	private hideTimeout: ReturnType<typeof setTimeout> | null = null;
-	private dragState: { originIndex: number; targetIndex: number; insertAfter: boolean; axis: 'row' | 'col'; tableNode: TableNode } | null = null;
-	private insertIndicator: HTMLElement | null = null;
 
-	getNodes(): Klass<LexicalNode>[] {
-		return [TableNode, TableRowNode, TableCellNode];
-	}
-
-	getTransformers(): Transformer[] {
-		return [TABLE_TRANSFORMER];
-	}
+	getNodes(): Klass<LexicalNode>[] { return [TableNode, TableRowNode, TableCellNode]; }
+	getTransformers(): Transformer[] { return [TABLE_TRANSFORMER]; }
 
 	getToolbarButton(): ToolbarButtonDef | null {
 		return {
-			action: 'table',
-			title: 'Insert table',
+			action: 'table', title: 'Insert table',
 			icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>',
 			onAction: () => this.showTableDialog(),
 		};
@@ -84,70 +111,19 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	attach(editor: LexicalEditor, hostShadow: ShadowRoot): void {
 		this.editor = editor;
 		this.hostShadow = hostShadow;
-
 		this.cleanups.push(registerTablePlugin(editor));
 
-		// Create persistent helper buttons (appended to editor-container)
 		const container = hostShadow.querySelector('.editor-container')!;
 
-		this.addRowBtn = document.createElement('button') as HTMLButtonElement;
-		this.addRowBtn.className = 'table-helper-btn table-add-row';
-		this.addRowBtn.type = 'button';
-		this.addRowBtn.title = 'Add row';
-		this.addRowBtn.textContent = '+';
-		this.addRowBtn.style.display = 'none';
-		this.addRowBtn.addEventListener('mousedown', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			this.addRow();
-		});
-		this.addRowBtn.addEventListener('mouseenter', () => this.cancelHide());
-		this.addRowBtn.addEventListener('mouseleave', () => this.scheduleHide());
-		container.appendChild(this.addRowBtn);
+		// Add row/col buttons
+		this.addRowBtn = this.createHelper(container, 'table-helper-btn table-add-row', 'Add row', '+', () => this.addRow());
+		this.addColBtn = this.createHelper(container, 'table-helper-btn table-add-col', 'Add column', '+', () => this.addCol());
 
-		this.addColBtn = document.createElement('button') as HTMLButtonElement;
-		this.addColBtn.className = 'table-helper-btn table-add-col';
-		this.addColBtn.type = 'button';
-		this.addColBtn.title = 'Add column';
-		this.addColBtn.textContent = '+';
-		this.addColBtn.style.display = 'none';
-		this.addColBtn.addEventListener('mousedown', (e) => {
-			e.preventDefault();
-			e.stopPropagation();
-			this.addCol();
-		});
-		this.addColBtn.addEventListener('mouseenter', () => this.cancelHide());
-		this.addColBtn.addEventListener('mouseleave', () => this.scheduleHide());
-		container.appendChild(this.addColBtn);
+		// Drag handles — native draggable
+		this.rowHandle = this.createDragHandle(container, 'table-drag-handle table-drag-row', 'row');
+		this.colHandle = this.createDragHandle(container, 'table-drag-handle table-drag-col', 'col');
 
-		// Create row/col drag handles
-		this.rowHandle = document.createElement('div');
-		this.rowHandle.className = 'table-drag-handle table-drag-row';
-		this.rowHandle.innerHTML = '⠿';
-		this.rowHandle.style.display = 'none';
-		this.rowHandle.addEventListener('mouseenter', () => this.cancelHide());
-		this.rowHandle.addEventListener('mouseleave', () => this.scheduleHide());
-		this.rowHandle.addEventListener('mousedown', (e) => {
-			e.preventDefault();
-			const idx = parseInt(this.rowHandle!.dataset.index || '0');
-			this.startDrag(idx, e.clientY, 'row');
-		});
-		container.appendChild(this.rowHandle);
-
-		this.colHandle = document.createElement('div');
-		this.colHandle.className = 'table-drag-handle table-drag-col';
-		this.colHandle.innerHTML = '⠿';
-		this.colHandle.style.display = 'none';
-		this.colHandle.addEventListener('mouseenter', () => this.cancelHide());
-		this.colHandle.addEventListener('mouseleave', () => this.scheduleHide());
-		this.colHandle.addEventListener('mousedown', (e) => {
-			e.preventDefault();
-			const idx = parseInt(this.colHandle!.dataset.index || '0');
-			this.startDrag(idx, e.clientX, 'col');
-		});
-		container.appendChild(this.colHandle);
-
-		// Listen for mouse events on editor root
+		// Hover detection on editor root
 		const root = editor.getRootElement();
 		if (root) {
 			const onMouseOver = (e: MouseEvent) => {
@@ -157,13 +133,10 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 					this.cancelHide();
 					if (table !== this.activeTable) {
 						this.activeTable = table as HTMLElement;
-						this.positionHelpers();
+						this.positionAddButtons();
 					}
-					// Position row/col handles based on hovered cell
 					const cell = target.closest('td, th');
-					if (cell) {
-						this.positionDragHandles(cell as HTMLElement, table as HTMLElement);
-					}
+					if (cell) this.positionHandles(cell as HTMLElement, table as HTMLElement);
 				}
 			};
 			const onMouseOut = (e: MouseEvent) => {
@@ -174,6 +147,35 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 			};
 			root.addEventListener('mouseover', onMouseOver);
 			root.addEventListener('mouseout', onMouseOut);
+
+			// Block drag from anything inside the table except our handles
+			root.addEventListener('dragstart', (e) => {
+				const target = e.target as HTMLElement;
+				if (target.closest('table') && !target.classList.contains('table-drag-handle')) {
+					e.preventDefault();
+				}
+			});
+
+			// Drop targets: rows and cells
+			root.addEventListener('dragover', (e) => {
+				const target = e.target as HTMLElement;
+				if (target.closest('table')) {
+					e.preventDefault();
+					e.dataTransfer!.dropEffect = 'move';
+					this.updateDropIndicator(e, root);
+				}
+			});
+			root.addEventListener('dragleave', (e) => {
+				const related = e.relatedTarget as HTMLElement | null;
+				if (!related || !related.closest('table')) {
+					this.clearDropIndicators();
+				}
+			});
+			root.addEventListener('drop', (e) => {
+				e.preventDefault();
+				this.performDrop(e);
+			});
+
 			this.cleanups.push(() => {
 				root.removeEventListener('mouseover', onMouseOver);
 				root.removeEventListener('mouseout', onMouseOut);
@@ -184,43 +186,69 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	detach(): void {
 		this.cleanups.forEach(fn => fn());
 		this.cleanups = [];
-		this.addRowBtn?.remove();
-		this.addColBtn?.remove();
-		this.rowHandle?.remove();
-		this.colHandle?.remove();
-		this.addRowBtn = null;
-		this.addColBtn = null;
-		this.rowHandle = null;
-		this.colHandle = null;
+		[this.addRowBtn, this.addColBtn, this.rowHandle, this.colHandle].forEach(el => el?.remove());
+		this.addRowBtn = this.addColBtn = this.rowHandle = this.colHandle = null;
 		this.activeTable = null;
 		this.editor = null;
 		this.hostShadow = null;
 	}
 
-	private positionHelpers() {
-		if (!this.addRowBtn || !this.addColBtn || !this.activeTable || !this.hostShadow) return;
-		const container = this.hostShadow.querySelector('.editor-container')!;
-		const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
-		const tableRect = this.activeTable.getBoundingClientRect();
-		const containerRect = container.getBoundingClientRect();
-		const scrollTop = editorRoot?.scrollTop || 0;
-
-		const top = tableRect.top - containerRect.top + scrollTop;
-		const left = tableRect.left - containerRect.left;
-
-		this.addRowBtn.style.display = 'flex';
-		this.addRowBtn.style.top = (top + tableRect.height) + 'px';
-		this.addRowBtn.style.left = left + 'px';
-		this.addRowBtn.style.width = tableRect.width + 'px';
-
-		this.addColBtn.style.display = 'flex';
-		this.addColBtn.style.top = top + 'px';
-		this.addColBtn.style.left = (left + tableRect.width) + 'px';
-		this.addColBtn.style.height = tableRect.height + 'px';
-
+	private createHelper(container: Element, cls: string, title: string, text: string, onClick: () => void): HTMLButtonElement {
+		const btn = document.createElement('button') as HTMLButtonElement;
+		btn.className = cls;
+		btn.type = 'button';
+		btn.title = title;
+		btn.textContent = text;
+		btn.style.display = 'none';
+		btn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
+		btn.addEventListener('mouseenter', () => this.cancelHide());
+		btn.addEventListener('mouseleave', () => this.scheduleHide());
+		container.appendChild(btn);
+		return btn;
 	}
 
-	private positionDragHandles(cell: HTMLElement, table: HTMLElement) {
+	private createDragHandle(container: Element, cls: string, axis: 'row' | 'col'): HTMLElement {
+		const handle = document.createElement('div');
+		handle.className = cls;
+		handle.innerHTML = '⠿';
+		handle.draggable = true;
+		handle.style.display = 'none';
+		handle.addEventListener('mouseenter', () => this.cancelHide());
+		handle.addEventListener('mouseleave', () => this.scheduleHide());
+		handle.addEventListener('dragstart', (e) => {
+			e.dataTransfer!.effectAllowed = 'move';
+			e.dataTransfer!.setData('text/plain', `${axis}:${handle.dataset.index}`);
+			// Transparent drag image
+			const ghost = document.createElement('div');
+			ghost.style.opacity = '0';
+			document.body.appendChild(ghost);
+			e.dataTransfer!.setDragImage(ghost, 0, 0);
+			setTimeout(() => ghost.remove(), 0);
+			// Highlight source
+			requestAnimationFrame(() => this.highlightSource(parseInt(handle.dataset.index || '0'), axis));
+		});
+		handle.addEventListener('dragend', () => {
+			this.clearDropIndicators();
+			this.clearSourceHighlight();
+		});
+		container.appendChild(handle);
+		return handle;
+	}
+
+	private positionAddButtons() {
+		if (!this.addRowBtn || !this.addColBtn || !this.activeTable || !this.hostShadow) return;
+		const { top, left, width, height } = this.getTableOffset();
+		this.addRowBtn.style.display = 'flex';
+		this.addRowBtn.style.top = (top + height) + 'px';
+		this.addRowBtn.style.left = left + 'px';
+		this.addRowBtn.style.width = width + 'px';
+		this.addColBtn.style.display = 'flex';
+		this.addColBtn.style.top = top + 'px';
+		this.addColBtn.style.left = (left + width) + 'px';
+		this.addColBtn.style.height = height + 'px';
+	}
+
+	private positionHandles(cell: HTMLElement, table: HTMLElement) {
 		if (!this.rowHandle || !this.colHandle || !this.hostShadow) return;
 		const container = this.hostShadow.querySelector('.editor-container')!;
 		const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
@@ -231,18 +259,14 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 		const row = cell.closest('tr')!;
 		const rowRect = row.getBoundingClientRect();
 		const rowIndex = Array.from(table.querySelectorAll('tr')).indexOf(row);
-
-		// Row handle — left of table, aligned to hovered row
 		this.rowHandle.style.display = 'flex';
 		this.rowHandle.style.top = (rowRect.top - containerRect.top + scrollTop) + 'px';
 		this.rowHandle.style.left = (tableRect.left - containerRect.left - 20) + 'px';
 		this.rowHandle.style.height = rowRect.height + 'px';
 		this.rowHandle.dataset.index = String(rowIndex);
 
-		// Column handle — top of table, aligned to hovered column
 		const cellRect = cell.getBoundingClientRect();
 		const colIndex = Array.from(row.children).indexOf(cell);
-
 		this.colHandle.style.display = 'flex';
 		this.colHandle.style.top = (tableRect.top - containerRect.top + scrollTop - 20) + 'px';
 		this.colHandle.style.left = (cellRect.left - containerRect.left) + 'px';
@@ -250,155 +274,144 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 		this.colHandle.dataset.index = String(colIndex);
 	}
 
-	private startDrag(index: number, _startPos: number, axis: 'row' | 'col') {
-		if (!this.activeTable || !this.editor || !this.hostShadow) return;
+	private getTableOffset() {
+		const container = this.hostShadow!.querySelector('.editor-container')!;
+		const editorRoot = this.hostShadow!.querySelector('.editor-root') as HTMLElement;
+		const tableRect = this.activeTable!.getBoundingClientRect();
+		const containerRect = container.getBoundingClientRect();
+		const scrollTop = editorRoot?.scrollTop || 0;
+		return {
+			top: tableRect.top - containerRect.top + scrollTop,
+			left: tableRect.left - containerRect.left,
+			width: tableRect.width,
+			height: tableRect.height,
+		};
+	}
+
+	private highlightSource(index: number, axis: 'row' | 'col') {
+		if (!this.activeTable) return;
+		if (axis === 'row') {
+			this.activeTable.querySelectorAll('tr')[index]?.classList.add('table-row-dragging');
+		} else {
+			this.activeTable.querySelectorAll('tr').forEach(row => {
+				row.children[index]?.classList.add('table-col-dragging');
+			});
+		}
+	}
+
+	private clearSourceHighlight() {
+		if (!this.activeTable) return;
+		this.activeTable.querySelectorAll('.table-row-dragging').forEach(el => el.classList.remove('table-row-dragging'));
+		this.activeTable.querySelectorAll('.table-col-dragging').forEach(el => el.classList.remove('table-col-dragging'));
+	}
+
+	private updateDropIndicator(e: DragEvent, root: HTMLElement) {
+		if (!this.activeTable) return;
+		const data = e.dataTransfer?.types.includes('text/plain') ? 'pending' : null;
+		if (!data) return;
+
+		// Clear previous indicators
+		this.activeTable.querySelectorAll('.drop-before, .drop-after').forEach(el => {
+			el.classList.remove('drop-before', 'drop-after');
+		});
+
+		const target = e.target as HTMLElement;
+
+		// Detect axis from the ongoing drag (check if row or column handle started it)
+		const cell = target.closest('td, th') as HTMLElement;
+		if (!cell) return;
+		const row = cell.closest('tr')!;
+
+		// Try to determine axis - if mouse is near top/bottom edge of a row, it's a row drag
+		const rowRect = row.getBoundingClientRect();
+		const cellRect = cell.getBoundingClientRect();
+		const rowMid = rowRect.top + rowRect.height / 2;
+		const colMid = cellRect.left + cellRect.width / 2;
+
+		// Check what type of drag is happening by examining dataTransfer
+		// We can't read data during dragover, but we know the type
+		if (this.rowHandle?.matches(':active') || this.activeTable.querySelector('.table-row-dragging')) {
+			// Row mode
+			if (e.clientY < rowMid) {
+				row.classList.add('drop-before');
+			} else {
+				row.classList.add('drop-after');
+			}
+		} else {
+			// Column mode
+			const colCells = this.activeTable.querySelectorAll('tr');
+			const colIndex = Array.from(row.children).indexOf(cell);
+			colCells.forEach(r => {
+				const c = r.children[colIndex];
+				if (c) {
+					if (e.clientX < colMid) {
+						c.classList.add('drop-before');
+					} else {
+						c.classList.add('drop-after');
+					}
+				}
+			});
+		}
+	}
+
+	private clearDropIndicators() {
+		this.activeTable?.querySelectorAll('.drop-before, .drop-after').forEach(el => {
+			el.classList.remove('drop-before', 'drop-after');
+		});
+	}
+
+	private performDrop(e: DragEvent) {
+		if (!this.activeTable || !this.editor) return;
+		const raw = e.dataTransfer?.getData('text/plain');
+		if (!raw) return;
+		const [axis, originStr] = raw.split(':');
+		const originIndex = parseInt(originStr);
+
+		const target = e.target as HTMLElement;
+		const cell = target.closest('td, th');
+		if (!cell) return;
+		const row = cell.closest('tr')!;
 
 		const tableNode = this.getTableNodeFromDom(this.activeTable);
 		if (!tableNode) return;
 
-		this.dragState = { originIndex: index, targetIndex: index, insertAfter: true, axis, tableNode };
-		this.highlightDragged(index, axis);
+		if (axis === 'row') {
+			const rowRect = row.getBoundingClientRect();
+			const insertBefore = e.clientY < rowRect.top + rowRect.height / 2;
+			let targetIndex = Array.from(this.activeTable.querySelectorAll('tr')).indexOf(row);
+			if (targetIndex === originIndex) return;
 
-		// Create insertion indicator line
-		this.insertIndicator = document.createElement('div');
-		this.insertIndicator.className = axis === 'row' ? 'table-insert-indicator-row' : 'table-insert-indicator-col';
-		const container = this.hostShadow.querySelector('.editor-container')!;
-		container.appendChild(this.insertIndicator);
-
-		const handle = axis === 'row' ? this.rowHandle : this.colHandle;
-
-		const onMouseMove = (e: MouseEvent) => {
-			if (!this.dragState || !this.activeTable || !this.insertIndicator) return;
-			const pos = axis === 'row' ? e.clientY : e.clientX;
-			const editorRoot = this.hostShadow!.querySelector('.editor-root') as HTMLElement;
-			const containerRect = container.getBoundingClientRect();
-			const scrollTop = editorRoot?.scrollTop || 0;
-			const tableRect = this.activeTable.getBoundingClientRect();
-			const tableLeft = tableRect.left - containerRect.left;
-			const tableTop = tableRect.top - containerRect.top + scrollTop;
-
-			// Move handle along axis, clamped to table bounds
-			if (handle) {
-				if (axis === 'row') {
-					const rowHeight = parseInt(handle.style.height) || 30;
-					const minY = tableTop;
-					const maxY = tableTop + tableRect.height - rowHeight;
-					const y = Math.max(minY, Math.min(maxY, e.clientY - containerRect.top + scrollTop - rowHeight / 2));
-					handle.style.top = y + 'px';
-				} else {
-					const colWidth = parseInt(handle.style.width) || 60;
-					const minX = tableLeft;
-					const maxX = tableLeft + tableRect.width - colWidth;
-					const x = Math.max(minX, Math.min(maxX, e.clientX - containerRect.left - colWidth / 2));
-					handle.style.left = x + 'px';
-				}
-			}
-
-			// Find target position
-			let targetIndex = this.dragState.originIndex;
-			let insertAfter = true;
-
-			if (axis === 'row') {
-				const rows = this.activeTable.querySelectorAll('tr');
-				for (let i = 0; i < rows.length; i++) {
-					if (i === this.dragState.originIndex) continue;
-					const rect = rows[i].getBoundingClientRect();
-					const mid = rect.top + rect.height / 2;
-					if (pos < mid) {
-						targetIndex = i;
-						insertAfter = false;
-						break;
-					}
-					targetIndex = i;
-					insertAfter = true;
-				}
-
-				// Position indicator line
+			this.editor.update(() => {
+				const rows = tableNode.getChildren();
+				const movedRow = rows[originIndex];
+				if (!$isTableRowNode(movedRow)) return;
 				const targetRow = rows[targetIndex];
-				if (targetRow) {
-					const rect = targetRow.getBoundingClientRect();
-					const y = insertAfter
-						? rect.bottom - containerRect.top + scrollTop
-						: rect.top - containerRect.top + scrollTop;
-					this.insertIndicator.style.top = (y - 1) + 'px';
-					this.insertIndicator.style.left = tableLeft + 'px';
-					this.insertIndicator.style.width = tableRect.width + 'px';
-					this.insertIndicator.style.display = targetIndex !== this.dragState.originIndex ? 'block' : 'none';
+				movedRow.remove();
+				if (insertBefore) {
+					targetRow.insertBefore(movedRow);
+				} else {
+					targetRow.insertAfter(movedRow);
 				}
-			} else {
-				const firstRow = this.activeTable.querySelector('tr');
-				if (!firstRow) return;
-				const cells = firstRow.children;
-				for (let i = 0; i < cells.length; i++) {
-					if (i === this.dragState.originIndex) continue;
-					const rect = cells[i].getBoundingClientRect();
-					const mid = rect.left + rect.width / 2;
-					if (pos < mid) {
-						targetIndex = i;
-						insertAfter = false;
-						break;
-					}
-					targetIndex = i;
-					insertAfter = true;
-				}
+			});
+		} else {
+			const cellRect = cell.getBoundingClientRect();
+			const targetIndex = Array.from(row.children).indexOf(cell);
+			if (targetIndex === originIndex) return;
 
-				// Position indicator line
-				const targetCell = cells[targetIndex];
-				if (targetCell) {
-					const rect = targetCell.getBoundingClientRect();
-					const x = insertAfter
-						? rect.right - containerRect.left
-						: rect.left - containerRect.left;
-					this.insertIndicator.style.left = (x - 1) + 'px';
-					this.insertIndicator.style.top = tableTop + 'px';
-					this.insertIndicator.style.height = tableRect.height + 'px';
-					this.insertIndicator.style.display = targetIndex !== this.dragState.originIndex ? 'block' : 'none';
-				}
-			}
+			this.editor.update(() => {
+				$moveTableColumn(tableNode, originIndex, targetIndex);
+			});
+		}
 
-			this.dragState.targetIndex = targetIndex;
-			this.dragState.insertAfter = insertAfter;
-		};
-
-		const onMouseUp = () => {
-			if (this.dragState && this.dragState.targetIndex !== this.dragState.originIndex) {
-				const { originIndex, targetIndex, axis: dragAxis } = this.dragState;
-				this.editor!.update(() => {
-					if (dragAxis === 'row') {
-						const rows = this.dragState!.tableNode.getChildren();
-						const movedRow = rows[originIndex];
-						if (!$isTableRowNode(movedRow)) return;
-						const targetRow = rows[targetIndex];
-						movedRow.remove();
-						if (targetIndex < originIndex) {
-							targetRow.insertBefore(movedRow);
-						} else {
-							targetRow.insertAfter(movedRow);
-						}
-					} else {
-						$moveTableColumn(this.dragState!.tableNode, originIndex, targetIndex);
-					}
-				});
-				setTimeout(() => this.positionHelpers(), 20);
-			}
-
-			this.clearDragHighlight();
-			this.insertIndicator?.remove();
-			this.insertIndicator = null;
-			this.dragState = null;
-			document.removeEventListener('mousemove', onMouseMove);
-			document.removeEventListener('mouseup', onMouseUp);
-		};
-
-		document.addEventListener('mousemove', onMouseMove);
-		document.addEventListener('mouseup', onMouseUp);
+		this.clearDropIndicators();
+		this.clearSourceHighlight();
+		setTimeout(() => this.positionAddButtons(), 20);
 	}
 
 	private hideHelpers() {
-		if (this.addRowBtn) this.addRowBtn.style.display = 'none';
-		if (this.addColBtn) this.addColBtn.style.display = 'none';
-		if (this.rowHandle) this.rowHandle.style.display = 'none';
-		if (this.colHandle) this.colHandle.style.display = 'none';
+		[this.addRowBtn, this.addColBtn, this.rowHandle, this.colHandle].forEach(el => {
+			if (el) el.style.display = 'none';
+		});
 		this.activeTable = null;
 	}
 
@@ -408,74 +421,46 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 	}
 
 	private cancelHide() {
-		if (this.hideTimeout) {
-			clearTimeout(this.hideTimeout);
-			this.hideTimeout = null;
-		}
+		if (this.hideTimeout) { clearTimeout(this.hideTimeout); this.hideTimeout = null; }
 	}
 
 	private addRow() {
 		if (!this.activeTable) return;
 		this.editor?.update(() => {
-			const tableNode = this.getTableNodeFromDom(this.activeTable!);
-			if (!tableNode) return;
-			const lastRow = tableNode.getLastChild();
+			const t = this.getTableNodeFromDom(this.activeTable!);
+			if (!t) return;
+			const lastRow = t.getLastChild();
 			if (!$isTableRowNode(lastRow)) return;
 			const lastCell = lastRow.getLastChild();
 			if (!$isTableCellNode(lastCell)) return;
 			lastCell.selectEnd();
 			$insertTableRowAtSelection(true);
 		});
-		setTimeout(() => this.positionHelpers(), 50);
+		setTimeout(() => this.positionAddButtons(), 50);
 	}
 
 	private addCol() {
 		if (!this.activeTable) return;
 		this.editor?.update(() => {
-			const tableNode = this.getTableNodeFromDom(this.activeTable!);
-			if (!tableNode) return;
-			const firstRow = tableNode.getFirstChild();
+			const t = this.getTableNodeFromDom(this.activeTable!);
+			if (!t) return;
+			const firstRow = t.getFirstChild();
 			if (!$isTableRowNode(firstRow)) return;
 			const lastCell = firstRow.getLastChild();
 			if (!$isTableCellNode(lastCell)) return;
 			lastCell.selectEnd();
 			$insertTableColumnAtSelection(true);
 		});
-		setTimeout(() => this.positionHelpers(), 50);
-	}
-
-	private highlightDragged(index: number, axis: 'row' | 'col') {
-		if (!this.activeTable) return;
-		this.clearDragHighlight();
-		if (axis === 'row') {
-			const rows = this.activeTable.querySelectorAll('tr');
-			rows[index]?.classList.add('table-row-dragging');
-		} else {
-			const rows = this.activeTable.querySelectorAll('tr');
-			rows.forEach(row => {
-				const cell = row.children[index];
-				cell?.classList.add('table-col-dragging');
-			});
-		}
-	}
-
-	private clearDragHighlight() {
-		if (!this.activeTable) return;
-		this.activeTable.querySelectorAll('.table-row-dragging').forEach(el => el.classList.remove('table-row-dragging'));
-		this.activeTable.querySelectorAll('.table-col-dragging').forEach(el => el.classList.remove('table-col-dragging'));
+		setTimeout(() => this.positionAddButtons(), 50);
 	}
 
 	private getTableNodeFromDom(tableDom: HTMLElement): TableNode | null {
 		if (!this.editor) return null;
 		let result: TableNode | null = null;
 		this.editor.getEditorState().read(() => {
-			const editorState = this.editor!.getEditorState();
-			editorState._nodeMap.forEach((node: LexicalNode) => {
-				if ($isTableNode(node)) {
-					const dom = this.editor!.getElementByKey(node.getKey());
-					if (dom === tableDom) {
-						result = node as TableNode;
-					}
+			this.editor!.getEditorState()._nodeMap.forEach((node: LexicalNode) => {
+				if ($isTableNode(node) && this.editor!.getElementByKey(node.getKey()) === tableDom) {
+					result = node as TableNode;
 				}
 			});
 		});
@@ -484,10 +469,8 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 
 	private async showTableDialog() {
 		if (!this.editor || !this.hostShadow) return;
-
 		const popover = new EditorPopover();
 		this.hostShadow.appendChild(popover);
-
 		const result = await popover.show({
 			title: 'Insert Table',
 			fields: [
@@ -496,15 +479,11 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 			],
 			submitLabel: 'Insert',
 		});
-
 		if (!result) return;
-
 		const rows = Math.max(1, Math.min(20, parseInt(result.rows) || 3));
 		const cols = Math.max(1, Math.min(10, parseInt(result.cols) || 3));
-
 		this.editor.dispatchCommand(INSERT_TABLE_COMMAND, {
-			rows: String(rows),
-			columns: String(cols),
+			rows: String(rows), columns: String(cols),
 			includeHeaders: { rows: true, columns: false },
 		});
 	}

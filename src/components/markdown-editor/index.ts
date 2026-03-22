@@ -124,6 +124,7 @@ export class MarkdownEditorElement extends HTMLElement {
 			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 			.editor-root table {
 				border-collapse: collapse; width: calc(100% - 40px); margin: 1em 20px;
+				-webkit-user-drag: none;
 				font-size: var(--font-ui-small);
 			}
 			.editor-root th, .editor-root td {
@@ -166,15 +167,22 @@ export class MarkdownEditorElement extends HTMLElement {
 				outline: 2px solid var(--interactive-accent);
 				background: rgba(var(--interactive-accent-rgb, 100, 100, 255), 0.1);
 			}
-			.table-insert-indicator-row {
-				position: absolute; z-index: 11; height: 3px;
-				background: var(--interactive-accent); border-radius: 2px;
-				pointer-events: none; display: none;
+			/* Drop indicators — purple border on insertion side */
+			.editor-root tr.drop-before td,
+			.editor-root tr.drop-before th {
+				border-top: 3px solid var(--interactive-accent);
 			}
-			.table-insert-indicator-col {
-				position: absolute; z-index: 11; width: 3px;
-				background: var(--interactive-accent); border-radius: 2px;
-				pointer-events: none; display: none;
+			.editor-root tr.drop-after td,
+			.editor-root tr.drop-after th {
+				border-bottom: 3px solid var(--interactive-accent);
+			}
+			.editor-root td.drop-before,
+			.editor-root th.drop-before {
+				border-left: 3px solid var(--interactive-accent);
+			}
+			.editor-root td.drop-after,
+			.editor-root th.drop-after {
+				border-right: 3px solid var(--interactive-accent);
 			}
 			.tok-comment { color: var(--text-faint); font-style: italic; }
 			.tok-keyword { color: var(--text-accent); }
