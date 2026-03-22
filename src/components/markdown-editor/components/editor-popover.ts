@@ -1,5 +1,3 @@
-import { $setSelection } from 'lexical';
-
 export interface PopoverField {
 	name: string;
 	label?: string;
@@ -14,15 +12,17 @@ export interface PopoverConfig {
 	fields: PopoverField[];
 	submitLabel?: string;
 	cancelLabel?: string;
-	/** Pass the Lexical editor to save/restore selection */
+	/** Lexical editor instance for focus restoration */
 	editor?: any;
+	/** DOM element to click after popover closes to restore focus/selection */
+	anchor?: HTMLElement;
 }
 
 export class EditorPopover extends HTMLElement {
 	private shadow: ShadowRoot;
 	private resolve: ((values: Record<string, string> | null) => void) | null = null;
 	private editor: any = null;
-	private savedEditorState: any = null;
+	private anchor: HTMLElement | null = null;
 
 	constructor() {
 		super();
@@ -31,10 +31,7 @@ export class EditorPopover extends HTMLElement {
 
 	show(config: PopoverConfig): Promise<Record<string, string> | null> {
 		this.editor = config.editor || null;
-		// Save Lexical's editor state (includes selection) before dialog steals focus
-		if (this.editor) {
-			this.savedEditorState = this.editor.getEditorState().clone();
-		}
+		this.anchor = config.anchor || null;
 		return new Promise((resolve) => {
 			this.resolve = resolve;
 			this.render(config);
@@ -265,15 +262,13 @@ export class EditorPopover extends HTMLElement {
 		if (this.onKeydown) {
 			document.removeEventListener('keydown', this.onKeydown);
 		}
-		// Restore Lexical selection state before re-focusing
-		if (this.editor && this.savedEditorState) {
-			const savedSelection = this.savedEditorState._selection;
-			if (savedSelection) {
-				this.editor.update(() => {
-					$setSelection(savedSelection.clone());
-				});
-			}
-			this.editor.getRootElement()?.focus();
+		// Restore focus: click the anchor element to re-trigger Lexical's selection
+		if (this.anchor) {
+			this.editor?.getRootElement()?.focus();
+			this.anchor.click();
+			this.anchor.scrollIntoView({ block: 'nearest' });
+		} else {
+			this.editor?.getRootElement()?.focus();
 		}
 		this.remove();
 	}

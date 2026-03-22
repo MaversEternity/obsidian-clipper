@@ -90,6 +90,7 @@ export class EditorPluginImage extends HTMLElement implements EditorPlugin {
 		let existingSrc = '';
 		let existingAlt = '';
 		let existingKey: string | null = null;
+		let anchorDom: HTMLElement | null = null;
 		this.editor.getEditorState().read(() => {
 			const selection = $getSelection();
 			if ($isNodeSelection(selection)) {
@@ -99,6 +100,7 @@ export class EditorPluginImage extends HTMLElement implements EditorPlugin {
 					existingSrc = img.__src;
 					existingAlt = img.__alt;
 					existingKey = img.getKey();
+					anchorDom = this.editor!.getElementByKey(existingKey);
 				}
 			}
 		});
@@ -116,6 +118,7 @@ export class EditorPluginImage extends HTMLElement implements EditorPlugin {
 			],
 			submitLabel: isEditing ? 'Update' : 'Insert image',
 			editor: this.editor || undefined,
+			anchor: anchorDom || undefined,
 		});
 
 		if (result && result.url) {
