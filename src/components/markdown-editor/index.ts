@@ -121,7 +121,7 @@ export class MarkdownEditorElement extends HTMLElement {
 			.editor-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; position: relative; overflow: hidden; }
 			.editor-root {
 				flex-grow: 1; outline: none;
-				padding: 10px var(--popup-padding, 12px);
+				padding: 10px var(--popup-padding, 12px) 10px 24px;
 				font-family: var(--font-default); font-size: var(--font-ui-small);
 				line-height: 1.5; color: var(--text-normal);
 				overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;
