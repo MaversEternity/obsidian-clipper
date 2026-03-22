@@ -16,6 +16,7 @@ import './plugins/link';
 import './plugins/image';
 import './plugins/youtube';
 import './plugins/hashtag';
+import './plugins/table';
 
 export class MarkdownEditorElement extends HTMLElement {
 	private shadow: ShadowRoot;
@@ -121,6 +122,19 @@ export class MarkdownEditorElement extends HTMLElement {
 			}
 			.toolbar-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+			.editor-root table {
+				border-collapse: collapse; width: 100%; margin: 0.4em 0;
+				font-size: var(--font-ui-small);
+			}
+			.editor-root th, .editor-root td {
+				border: 1px solid var(--divider-color); padding: 6px 10px;
+				text-align: left; min-width: 60px;
+			}
+			.editor-root th {
+				background: var(--background-secondary); font-weight: 600;
+			}
+			.editor-root td { background: transparent; }
+			.editor-root td p, .editor-root th p { margin: 0; }
 			.tok-comment { color: var(--text-faint); font-style: italic; }
 			.tok-keyword { color: var(--text-accent); }
 			.tok-string { color: var(--color-green, #a3be8c); }

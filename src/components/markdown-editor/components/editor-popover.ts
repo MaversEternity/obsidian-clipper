@@ -4,6 +4,7 @@ export interface PopoverField {
 	placeholder?: string;
 	value?: string;
 	required?: boolean;
+	type?: string;
 }
 
 export interface PopoverConfig {
@@ -183,7 +184,7 @@ export class EditorPopover extends HTMLElement {
 			}
 
 			const input = document.createElement('input');
-			input.type = 'text';
+			input.type = field.type || 'text';
 			input.name = field.name;
 			input.placeholder = field.placeholder || '';
 			if (field.value) input.value = field.value;

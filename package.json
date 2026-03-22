@@ -64,6 +64,7 @@
 		"@lexical/markdown": "^0.42.0",
 		"@lexical/rich-text": "^0.42.0",
 		"@lexical/selection": "^0.42.0",
+		"@lexical/table": "^0.42.0",
 		"@lexical/utils": "^0.42.0",
 		"@types/safari-extension": "^0.0.33",
 		"dayjs": "^1.11.13",

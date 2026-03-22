@@ -30,6 +30,10 @@ export const obsidianTheme: EditorThemeClasses = {
 	hashtag: 'cm-hashtag',
 	quote: 'cm-quote',
 	code: 'cm-codeblock',
+	table: 'cm-table',
+	tableRow: 'cm-table-row',
+	tableCell: 'cm-table-cell',
+	tableCellHeader: 'cm-table-cell-header',
 	codeHighlight: {
 		atrule: 'tok-atrule',
 		attr: 'tok-attr',
