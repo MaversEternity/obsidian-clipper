@@ -326,7 +326,7 @@ browser.runtime.sendMessage({ action: 'getActiveTab' }).then((resp: any) => {
 browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response?: any) => void): true | undefined => {
 	// Only handle messages with _targetTabId matching this tab, or book-viewer-specific actions
 	const isTargetedToMe = message._targetTabId && message._targetTabId === thisTabId;
-	const isBookViewerAction = message.action === 'openPdfFile' || message.action === 'ping' || message.action === 'toggleContentPicker' || message.action === 'toggleReaderMode';
+	const isBookViewerAction = message.action === 'openPdfFile' || message.action === 'ping' || message.action === 'toggleContentPicker' || message.action === 'toggleReaderMode' || message.action === 'refreshLookup';
 
 	if (!isTargetedToMe && !isBookViewerAction) {
 		return undefined; // Let other listeners handle
@@ -343,6 +343,11 @@ browser.runtime.onMessage.addListener((message: any, _sender: any, sendResponse:
 	if (message.action === 'ping') {
 		sendResponse({ pong: true });
 		return undefined;
+	}
+
+	if (message.action === 'refreshLookup') {
+		lookup.refresh().then(() => sendResponse({ success: true })).catch(() => sendResponse({ success: false }));
+		return true;
 	}
 
 	if (message.action === 'toggleReaderMode') {

@@ -428,6 +428,16 @@ async function handleUpdateNote(): Promise<void> {
 		}
 	}
 
+	// Notify content script to refresh lookup matches
+	if (result.success) {
+		try {
+			const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+			if (tab?.id) {
+				browser.tabs.sendMessage(tab.id, { action: 'refreshLookup' }).catch(() => {});
+			}
+		} catch {}
+	}
+
 	if (mainButton) {
 		mainButton.removeAttribute('disabled');
 		if (result.success) {

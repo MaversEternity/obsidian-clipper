@@ -15,6 +15,11 @@ const MIN_TAG_LENGTH = 2;
 let cachedTagMap: Map<string, { filename: string; tags: string[] }[]> | null = null;
 let cachedVaultName: string = '';
 
+/** Clear the tag cache so next getFilteredTagEntries() re-fetches from Obsidian */
+export function clearTagCache(): void {
+	cachedTagMap = null;
+}
+
 async function getObsidianTagMap(): Promise<Map<string, { filename: string; tags: string[] }[]>> {
 	if (cachedTagMap) return cachedTagMap;
 

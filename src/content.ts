@@ -201,6 +201,11 @@ declare global {
 			return true;
 		}
 
+		if (request.action === "refreshLookup") {
+			lookup.refresh().then(() => sendResponse({ success: true })).catch(() => sendResponse({ success: false }));
+			return true;
+		}
+
 		if (request.action === "close-iframe") {
 			const existingContainer = document.getElementById(containerId);
 			if (existingContainer) {
