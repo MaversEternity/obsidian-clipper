@@ -1,29 +1,65 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, PASTE_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey, $getRoot, $createParagraphNode, $createTextNode, $insertNodes } from 'lexical';
-import type { Transformer } from '@lexical/markdown';
-import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, $removeList, ListNode } from '@lexical/list';
-import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
-import { $createCodeNode, $isCodeNode, CodeNode } from '@lexical/code';
-import { $createLinkNode, $isLinkNode } from '@lexical/link';
-import { $createListNode, $createListItemNode } from '@lexical/list';
-import { $isTableCellNode } from '@lexical/table';
-import { $setBlocksType } from '@lexical/selection';
-import { $getNearestNodeOfType } from '@lexical/utils';
-import { $convertFromMarkdownString } from '@lexical/markdown';
-import { createMarkdownEditor, setMarkdown, getMarkdown } from './editor';
-import { OBSIDIAN_TRANSFORMERS } from './transformers';
-import { $createImageNode } from './nodes/ImageNode';
-import { $createHighlightNode, $isHighlightNode } from './nodes/HighlightNode';
-import { $createFootnoteRefNode, $isFootnoteRefNode } from './nodes/FootnoteNodes';
-import { createToolbar, type ToolbarHandle } from './toolbar';
-import { isEditorPlugin, type EditorPlugin, type ToolbarButtonDef } from './plugin-interface';
+import {
+	type LexicalEditor,
+	type Klass,
+	type LexicalNode,
+	FORMAT_TEXT_COMMAND,
+	PASTE_COMMAND,
+	$getSelection,
+	$isRangeSelection,
+	$isNodeSelection,
+	$isTextNode,
+	$getNodeByKey,
+	$getRoot,
+	$createParagraphNode,
+	$createTextNode,
+	$insertNodes,
+	$getNearestNodeFromDOMNode,
+} from "lexical";
+import type { Transformer } from "@lexical/markdown";
+import {
+	INSERT_UNORDERED_LIST_COMMAND,
+	INSERT_ORDERED_LIST_COMMAND,
+	INSERT_CHECK_LIST_COMMAND,
+	$isListNode,
+	$removeList,
+	ListNode,
+} from "@lexical/list";
+import {
+	$createHeadingNode,
+	$createQuoteNode,
+	$isHeadingNode,
+	$isQuoteNode,
+	type HeadingTagType,
+} from "@lexical/rich-text";
+import { $createCodeNode, $isCodeNode, CodeNode } from "@lexical/code";
+import { $createLinkNode, $isLinkNode } from "@lexical/link";
+import { $createListNode, $createListItemNode } from "@lexical/list";
+import { $isTableCellNode } from "@lexical/table";
+import { $setBlocksType } from "@lexical/selection";
+import { $getNearestNodeOfType } from "@lexical/utils";
+import { $convertFromMarkdownString } from "@lexical/markdown";
+import { createMarkdownEditor, setMarkdown, getMarkdown } from "./editor";
+import { OBSIDIAN_TRANSFORMERS } from "./transformers";
+import { $createImageNode } from "./nodes/ImageNode";
+import { $createHighlightNode, $isHighlightNode } from "./nodes/HighlightNode";
+import {
+	$createFootnoteRefNode,
+	$isFootnoteRefNode,
+} from "./nodes/FootnoteNodes";
+import { createToolbar, type ToolbarHandle } from "./toolbar";
+import {
+	isEditorPlugin,
+	type EditorPlugin,
+	type ToolbarButtonDef,
+} from "./plugin-interface";
 
 // Import plugin registrations
-import './plugins/mention';
-import './plugins/link';
-import './plugins/image';
-import './plugins/youtube';
-import './plugins/hashtag';
-import './plugins/table';
+import "./plugins/mention";
+import "./plugins/link";
+import "./plugins/image";
+import "./plugins/youtube";
+import "./plugins/hashtag";
+import "./plugins/table";
 
 export class MarkdownEditorElement extends HTMLElement {
 	private shadow: ShadowRoot;
@@ -39,7 +75,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
 	constructor() {
 		super();
-		this.shadow = this.attachShadow({ mode: 'open', delegatesFocus: true });
+		this.shadow = this.attachShadow({ mode: "open", delegatesFocus: true });
 		this.patchSelectionForShadowDOM();
 	}
 
@@ -47,7 +83,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		const shadow = this.shadow;
 		const origGetSelection = window.getSelection.bind(window);
 		const getShadowSelection = (): Selection | null => {
-			if ('getSelection' in shadow) {
+			if ("getSelection" in shadow) {
 				const sel = (shadow as any).getSelection() as Selection | null;
 				if (sel && sel.rangeCount > 0) return sel;
 			}
@@ -55,9 +91,10 @@ export class MarkdownEditorElement extends HTMLElement {
 		};
 		window.getSelection = () => getShadowSelection() || origGetSelection();
 		const origDocGetSelection = document.getSelection.bind(document);
-		document.getSelection = () => getShadowSelection() || origDocGetSelection();
-		shadow.addEventListener('selectionchange', () => {
-			document.dispatchEvent(new Event('selectionchange'));
+		document.getSelection = () =>
+			getShadowSelection() || origDocGetSelection();
+		shadow.addEventListener("selectionchange", () => {
+			document.dispatchEvent(new Event("selectionchange"));
 		});
 	}
 
@@ -78,7 +115,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		}
 
 		// Styles
-		const style = document.createElement('style');
+		const style = document.createElement("style");
 		style.textContent = `
 			:host { display: flex; flex-grow: 1; position: relative; min-height: 0; overflow: hidden; }
 			.editor-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; position: relative; overflow: hidden; }
@@ -321,6 +358,26 @@ export class MarkdownEditorElement extends HTMLElement {
 				cursor: pointer; outline: none; padding: 2px 4px;
 			}
 			.code-lang-selector select option { background: var(--background-primary); }
+			/* === Block drag handle === */
+			.block-drag-handle {
+				position: absolute; z-index: 10;
+				left: 2px; width: 18px; height: 18px;
+				display: flex; align-items: center; justify-content: center;
+				border-radius: var(--radius-s); cursor: grab;
+				color: var(--text-faint); font-size: 10px;
+				opacity: 0; transition: opacity 0.15s ease;
+				background: transparent; border: none; padding: 0;
+				pointer-events: auto;
+			}
+			.block-drag-handle:hover { opacity: 1 !important; color: var(--text-normal); background: var(--background-modifier-hover); }
+			.block-drag-handle[data-visible] { opacity: 0.4; }
+			.block-drag-handle:active { cursor: grabbing; }
+			.block-drop-indicator {
+				position: absolute; left: 20px; right: 10px; height: 2px;
+				background: var(--interactive-accent); z-index: 15;
+				pointer-events: none; display: none; border-radius: 1px;
+			}
+			.block-drop-indicator[data-visible] { display: block; }
 			.toolbar-separator { width: 1px; height: 16px; background: var(--divider-color); margin: 0 4px; }
 			.dropdown {
 				position: absolute; left: 0; right: 0; max-height: 200px;
@@ -345,17 +402,36 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.shadow.appendChild(style);
 
 		// Build UI
-		const container = document.createElement('div');
-		container.className = 'editor-container';
+		const container = document.createElement("div");
+		container.className = "editor-container";
 
-		this.editorRoot = document.createElement('div');
-		this.editorRoot.className = 'editor-root';
-		this.editorRoot.contentEditable = 'true';
-		this.editorRoot.dataset.placeholder = this.getAttribute('placeholder') || '';
+		this.editorRoot = document.createElement("div");
+		this.editorRoot.className = "editor-root";
+		this.editorRoot.contentEditable = "true";
+		this.editorRoot.dataset.placeholder =
+			this.getAttribute("placeholder") || "";
 
-		this.toolbarHandle = createToolbar((action) => this.handleToolbarAction(action), pluginButtons);
+		this.toolbarHandle = createToolbar(
+			(action) => this.handleToolbarAction(action),
+			pluginButtons,
+		);
 		container.appendChild(this.toolbarHandle.element);
 		container.appendChild(this.editorRoot);
+
+		// Block drag handle + drop indicator
+		const dragHandle = document.createElement("button");
+		dragHandle.className = "block-drag-handle";
+		dragHandle.draggable = true;
+		dragHandle.innerHTML = "⠿";
+		dragHandle.title = "Drag to move block";
+		container.appendChild(dragHandle);
+
+		const dropIndicator = document.createElement("div");
+		dropIndicator.className = "block-drop-indicator";
+		container.appendChild(dropIndicator);
+
+		this.setupBlockDragHandles(container, dragHandle, dropIndicator);
+
 		this.shadow.appendChild(container);
 
 		// Create editor with plugin nodes and transformers
@@ -381,65 +457,251 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.editor.registerUpdateListener(() => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
 			this.debounceTimer = setTimeout(() => {
-				this.dispatchEvent(new Event('input', { bubbles: true }));
-				this.dispatchEvent(new Event('change', { bubbles: true }));
+				this.dispatchEvent(new Event("input", { bubbles: true }));
+				this.dispatchEvent(new Event("change", { bubbles: true }));
 			}, 150);
 		});
 
 		// Load initial value
-		const initialValue = this.getAttribute('value');
+		const initialValue = this.getAttribute("value");
 		if (initialValue) {
 			setMarkdown(this.editor, initialValue, this.pluginTransformers);
 		}
 	}
 
 	private static LANGUAGES = [
-		'', 'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp',
-		'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'sql', 'html', 'css',
-		'scss', 'json', 'yaml', 'xml', 'markdown', 'bash', 'shell', 'powershell',
-		'docker', 'lua', 'r', 'scala', 'dart', 'elixir', 'haskell', 'clojure',
+		"",
+		"javascript",
+		"typescript",
+		"python",
+		"java",
+		"c",
+		"cpp",
+		"csharp",
+		"go",
+		"rust",
+		"ruby",
+		"php",
+		"swift",
+		"kotlin",
+		"sql",
+		"html",
+		"css",
+		"scss",
+		"json",
+		"yaml",
+		"xml",
+		"markdown",
+		"bash",
+		"shell",
+		"powershell",
+		"docker",
+		"lua",
+		"r",
+		"scala",
+		"dart",
+		"elixir",
+		"haskell",
+		"clojure",
 	];
 
 	private showLangSelector(currentLang: string, codeDom: HTMLElement) {
 		this.hideLangSelector();
-		const selector = document.createElement('div');
-		selector.className = 'code-lang-selector';
+		const selector = document.createElement("div");
+		selector.className = "code-lang-selector";
 
-		const select = document.createElement('select');
+		const select = document.createElement("select");
 		for (const lang of MarkdownEditorElement.LANGUAGES) {
-			const opt = document.createElement('option');
+			const opt = document.createElement("option");
 			opt.value = lang;
-			opt.textContent = lang || 'plain text';
+			opt.textContent = lang || "plain text";
 			if (lang === currentLang) opt.selected = true;
 			select.appendChild(opt);
 		}
-		select.addEventListener('change', () => {
+		select.addEventListener("change", () => {
 			this.editor?.update(() => {
-				const node = $getNodeByKey(this.currentCodeNodeKey!) as InstanceType<typeof CodeNode> | null;
+				const node = $getNodeByKey(
+					this.currentCodeNodeKey!,
+				) as InstanceType<typeof CodeNode> | null;
 				if (node && $isCodeNode(node)) {
-					node.setLanguage(select.value || undefined as any);
+					node.setLanguage(select.value || (undefined as any));
 				}
 			});
 		});
 		// Don't steal focus from editor
-		select.addEventListener('mousedown', (e) => e.stopPropagation());
+		select.addEventListener("mousedown", (e) => e.stopPropagation());
 
 		selector.appendChild(select);
-		const container = this.shadow.querySelector('.editor-container')!;
+		const container = this.shadow.querySelector(".editor-container")!;
 		container.appendChild(selector);
 		this.langSelector = selector;
 
 		// Position relative to editor container
 		const codeRect = codeDom.getBoundingClientRect();
 		const containerRect = container.getBoundingClientRect();
-		selector.style.top = (codeRect.top - containerRect.top + container.scrollTop + 4) + 'px';
-		selector.style.right = '16px';
+		selector.style.top =
+			codeRect.top - containerRect.top + container.scrollTop + 4 + "px";
+		selector.style.right = "16px";
 	}
 
 	private hideLangSelector() {
 		this.langSelector?.remove();
 		this.langSelector = null;
 		this.currentCodeNodeKey = null;
+	}
+
+	private setupBlockDragHandles(
+		container: HTMLElement,
+		handle: HTMLElement,
+		indicator: HTMLElement,
+	) {
+		let draggedBlockKey: string | null = null;
+		let dropTargetKey: string | null = null;
+		let dropPosition: "before" | "after" = "after";
+		const editorRoot = this.editorRoot!;
+
+		// Get top-level block element from mouse position
+		const getBlockFromPoint = (y: number): Element | null => {
+			const children = Array.from(editorRoot.children);
+			for (const child of children) {
+				const rect = child.getBoundingClientRect();
+				if (y >= rect.top - 4 && y <= rect.bottom + 4) return child;
+			}
+			return null;
+		};
+
+		// Show handle on hover near blocks
+		container.addEventListener("mousemove", (e: MouseEvent) => {
+			if (draggedBlockKey) return;
+			const block = getBlockFromPoint(e.clientY);
+			if (!block) {
+				handle.removeAttribute("data-visible");
+				return;
+			}
+
+			const containerRect = container.getBoundingClientRect();
+			const blockRect = block.getBoundingClientRect();
+
+			handle.style.top = `${blockRect.top - containerRect.top + blockRect.height / 2 - 9}px`;
+			handle.setAttribute("data-visible", "");
+			handle.dataset.blockIndex = String(
+				Array.from(editorRoot.children).indexOf(block),
+			);
+		});
+
+		container.addEventListener("mouseleave", () => {
+			if (!draggedBlockKey) handle.removeAttribute("data-visible");
+		});
+
+		// Drag start — capture which block
+		handle.addEventListener("dragstart", (e: DragEvent) => {
+			const idx = parseInt(handle.dataset.blockIndex || "-1");
+			const block = editorRoot.children[idx];
+			if (!block || !this.editor) return;
+
+			// Read key synchronously
+			this.editor.update(
+				() => {
+					const node = $getNearestNodeFromDOMNode(block);
+					if (node) draggedBlockKey = node.getKey();
+				},
+				{ discrete: true },
+			);
+
+			if (!draggedBlockKey) return;
+
+			// Ghost image
+			if (e.dataTransfer) {
+				e.dataTransfer.effectAllowed = "move";
+				const ghost = block.cloneNode(true) as HTMLElement;
+				ghost.style.opacity = "0.5";
+				ghost.style.position = "absolute";
+				ghost.style.top = "-1000px";
+				document.body.appendChild(ghost);
+				e.dataTransfer.setDragImage(ghost, 0, 0);
+				setTimeout(() => ghost.remove(), 0);
+			}
+		});
+
+		// Drag over — show drop indicator
+		container.addEventListener("dragover", (e: DragEvent) => {
+			if (!draggedBlockKey) return;
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+			const block = getBlockFromPoint(e.clientY);
+			if (!block || !this.editor) {
+				indicator.removeAttribute("data-visible");
+				return;
+			}
+
+			const blockRect = block.getBoundingClientRect();
+			const containerRect = container.getBoundingClientRect();
+			const midY = blockRect.top + blockRect.height / 2;
+
+			dropPosition = e.clientY < midY ? "before" : "after";
+			const indicatorY =
+				dropPosition === "before"
+					? blockRect.top - containerRect.top
+					: blockRect.bottom - containerRect.top;
+
+			indicator.style.top = `${indicatorY - 1}px`;
+			indicator.setAttribute("data-visible", "");
+
+			this.editor.update(
+				() => {
+					const node = $getNearestNodeFromDOMNode(block);
+					if (node) dropTargetKey = node.getKey();
+				},
+				{ discrete: true },
+			);
+		});
+
+		// Drag end — cleanup
+		const cleanup = () => {
+			indicator.removeAttribute("data-visible");
+			handle.removeAttribute("data-visible");
+			draggedBlockKey = null;
+			dropTargetKey = null;
+			// Restore styles on all blocks
+			Array.from(editorRoot.children).forEach((c) => {
+				const el = c as HTMLElement;
+				el.style.opacity = "";
+			});
+		};
+
+		handle.addEventListener("dragend", cleanup);
+
+		// Drop — move the block
+		container.addEventListener("drop", (e: DragEvent) => {
+			e.preventDefault();
+			if (!draggedBlockKey || !dropTargetKey || !this.editor) {
+				cleanup();
+				return;
+			}
+			if (draggedBlockKey === dropTargetKey) {
+				cleanup();
+				return;
+			}
+
+			const srcKey = draggedBlockKey;
+			const tgtKey = dropTargetKey;
+			const pos = dropPosition;
+
+			this.editor.update(() => {
+				const srcNode = $getNodeByKey(srcKey);
+				const tgtNode = $getNodeByKey(tgtKey);
+				if (!srcNode || !tgtNode) return;
+				srcNode.remove();
+				if (pos === "before") {
+					tgtNode.insertBefore(srcNode);
+				} else {
+					tgtNode.insertAfter(srcNode);
+				}
+			});
+
+			cleanup();
+		});
 	}
 
 	private updateToolbarState() {
@@ -450,27 +712,32 @@ export class MarkdownEditorElement extends HTMLElement {
 		// Handle node selection (e.g., image selected)
 		if ($isNodeSelection(selection)) {
 			const nodes = selection.getNodes();
-			const { $isImageNode } = require('./nodes/ImageNode');
+			const { $isImageNode } = require("./nodes/ImageNode");
 			if (nodes.length === 1 && $isImageNode(nodes[0])) {
-				active.add('image');
+				active.add("image");
 				// Add visual selection to the image wrapper
 				const key = nodes[0].getKey();
 				const dom = this.editor?.getElementByKey(key);
-				dom?.classList.add('selected');
+				dom?.classList.add("selected");
 			}
 			// Clear previous image selections
-			this.editorRoot?.querySelectorAll('.editor-image-wrapper.selected').forEach(el => {
-				const nodeKey = (el as any).__lexicalKey;
-				if (!nodeKey || !selection.has(nodeKey)) el.classList.remove('selected');
-			});
+			this.editorRoot
+				?.querySelectorAll(".editor-image-wrapper.selected")
+				.forEach((el) => {
+					const nodeKey = (el as any).__lexicalKey;
+					if (!nodeKey || !selection.has(nodeKey))
+						el.classList.remove("selected");
+				});
 			this.toolbarHandle.setActiveStates(active);
 			return;
 		}
 
 		// Clear image selections when in range selection
-		this.editorRoot?.querySelectorAll('.editor-image-wrapper.selected').forEach(el => {
-			el.classList.remove('selected');
-		});
+		this.editorRoot
+			?.querySelectorAll(".editor-image-wrapper.selected")
+			.forEach((el) => {
+				el.classList.remove("selected");
+			});
 
 		if (!$isRangeSelection(selection)) {
 			this.toolbarHandle.setActiveStates(active);
@@ -478,14 +745,14 @@ export class MarkdownEditorElement extends HTMLElement {
 		}
 
 		// Text formats
-		if (selection.hasFormat('bold')) active.add('bold');
-		if (selection.hasFormat('italic')) active.add('italic');
-		if (selection.hasFormat('strikethrough')) active.add('strikethrough');
-		if (selection.hasFormat('code')) active.add('code');
+		if (selection.hasFormat("bold")) active.add("bold");
+		if (selection.hasFormat("italic")) active.add("italic");
+		if (selection.hasFormat("strikethrough")) active.add("strikethrough");
+		if (selection.hasFormat("code")) active.add("code");
 		// Check if selection contains highlight or footnote nodes
 		const selNodes = selection.getNodes();
-		if (selNodes.some(n => $isHighlightNode(n))) active.add('highlight');
-		if (selNodes.some(n => $isFootnoteRefNode(n))) active.add('footnote');
+		if (selNodes.some((n) => $isHighlightNode(n))) active.add("highlight");
+		if (selNodes.some((n) => $isFootnoteRefNode(n))) active.add("footnote");
 		// Also active when cursor is in a footnote definition paragraph
 		// Walk up to find the paragraph-level parent
 		let fnBlock = selection.anchor.getNode();
@@ -493,46 +760,62 @@ export class MarkdownEditorElement extends HTMLElement {
 		while (fnBlock.getParent() && fnBlock.getParent() !== root) {
 			fnBlock = fnBlock.getParent()!;
 		}
-		const fnFirst = 'getFirstChild' in fnBlock ? (fnBlock as any).getFirstChild() : null;
+		const fnFirst =
+			"getFirstChild" in fnBlock
+				? (fnBlock as any).getFirstChild()
+				: null;
 		if ($isFootnoteRefNode(fnFirst)) {
 			const fnSecond = fnFirst.getNextSibling();
-			if (fnSecond && $isTextNode(fnSecond) && fnSecond.getTextContent().startsWith(':')) {
-				active.add('footnote');
+			if (
+				fnSecond &&
+				$isTextNode(fnSecond) &&
+				fnSecond.getTextContent().startsWith(":")
+			) {
+				active.add("footnote");
 			}
 		}
 
 		// Block types — check the anchor node's parent chain
 		const anchorNode = selection.anchor.getNode();
-		const element = $isTextNode(anchorNode) ? anchorNode.getParent() : anchorNode;
+		const element = $isTextNode(anchorNode)
+			? anchorNode.getParent()
+			: anchorNode;
 
 		if (element) {
 			if ($isHeadingNode(element)) {
 				active.add(element.getTag()); // 'h1', 'h2', 'h3'
 			}
 			if ($isQuoteNode(element)) {
-				active.add('quote');
+				active.add("quote");
 			}
-			const codeParent = $isCodeNode(element) ? element : $isCodeNode(element.getParent()) ? element.getParent() : null;
+			const codeParent = $isCodeNode(element)
+				? element
+				: $isCodeNode(element.getParent())
+					? element.getParent()
+					: null;
 			if (codeParent && $isCodeNode(codeParent)) {
-				active.add('codeblock');
+				active.add("codeblock");
 				const key = codeParent.getKey();
-				const lang = codeParent.getLanguage() || '';
+				const lang = codeParent.getLanguage() || "";
 				if (key !== this.currentCodeNodeKey) {
 					this.currentCodeNodeKey = key;
 					const codeDom = this.editor!.getElementByKey(key);
 					if (codeDom) {
-						setTimeout(() => this.showLangSelector(lang, codeDom), 0);
+						setTimeout(
+							() => this.showLangSelector(lang, codeDom),
+							0,
+						);
 					}
 				}
 			}
 			if ($isLinkNode(element) || $isLinkNode(element.getParent())) {
-				active.add('link');
+				active.add("link");
 			}
 			// Table — check if inside a TableCellNode
 			let tableCheck: LexicalNode | null = element;
 			while (tableCheck) {
 				if ($isTableCellNode(tableCheck)) {
-					active.add('table');
+					active.add("table");
 					break;
 				}
 				tableCheck = tableCheck.getParent();
@@ -540,13 +823,13 @@ export class MarkdownEditorElement extends HTMLElement {
 			const listNode = $getNearestNodeOfType(anchorNode, ListNode);
 			if (listNode) {
 				const listType = listNode.getListType();
-				if (listType === 'bullet') active.add('ul');
-				if (listType === 'number') active.add('ol');
-				if (listType === 'check') active.add('checklist');
+				if (listType === "bullet") active.add("ul");
+				if (listType === "number") active.add("ol");
+				if (listType === "check") active.add("checklist");
 			}
 		}
 
-		if (!active.has('codeblock')) {
+		if (!active.has("codeblock")) {
 			this.hideLangSelector();
 		}
 		this.activeFormats = active;
@@ -558,19 +841,22 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.editorRoot?.focus();
 
 		switch (action) {
-			case 'bold':
-				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
+			case "bold":
+				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
 				break;
-			case 'italic':
-				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+			case "italic":
+				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
 				break;
-			case 'strikethrough':
-				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+			case "strikethrough":
+				this.editor.dispatchCommand(
+					FORMAT_TEXT_COMMAND,
+					"strikethrough",
+				);
 				break;
-			case 'code':
-				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code');
+			case "code":
+				this.editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code");
 				break;
-			case 'highlight':
+			case "highlight":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
@@ -578,30 +864,38 @@ export class MarkdownEditorElement extends HTMLElement {
 					if (!selectedText) return;
 					const nodes = selection.getNodes();
 					// Toggle: if already highlighted, unwrap
-					const isHighlighted = nodes.some(n => $isHighlightNode(n));
+					const isHighlighted = nodes.some((n) =>
+						$isHighlightNode(n),
+					);
 					if (isHighlighted) {
 						for (const node of nodes) {
 							if ($isHighlightNode(node)) {
-								const text = $createTextNode(node.getTextContent());
+								const text = $createTextNode(
+									node.getTextContent(),
+								);
 								node.replace(text);
 							}
 						}
 					} else {
 						// Wrap selection in highlight
 						selection.removeText();
-						const highlightNode = $createHighlightNode(selectedText);
+						const highlightNode =
+							$createHighlightNode(selectedText);
 						selection.insertNodes([highlightNode]);
 					}
 				});
 				break;
-			case 'footnote':
+			case "footnote":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
 					const root = $getRoot();
 					// Find highest existing footnote number
 					let maxFn = 0;
-					const md = getMarkdown(this.editor!, this.pluginTransformers);
+					const md = getMarkdown(
+						this.editor!,
+						this.pluginTransformers,
+					);
 					const matches = md.matchAll(/\[\^(\d+)\]/g);
 					for (const m of matches) {
 						const n = parseInt(m[1]);
@@ -617,14 +911,16 @@ export class MarkdownEditorElement extends HTMLElement {
 					root.append(defNode);
 				});
 				break;
-			case 'h-none':
+			case "h-none":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
 					$setBlocksType(selection, () => $createParagraphNode());
 				});
 				break;
-			case 'h1': case 'h2': case 'h3':
+			case "h1":
+			case "h2":
+			case "h3":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
@@ -632,51 +928,62 @@ export class MarkdownEditorElement extends HTMLElement {
 					if (this.activeFormats.has(action)) {
 						$setBlocksType(selection, () => $createParagraphNode());
 					} else {
-						$setBlocksType(selection, () => $createHeadingNode(action as HeadingTagType));
+						$setBlocksType(selection, () =>
+							$createHeadingNode(action as HeadingTagType),
+						);
 					}
 				});
 				break;
-			case 'codeblock':
+			case "codeblock":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
-					if (this.activeFormats.has('codeblock')) {
+					if (this.activeFormats.has("codeblock")) {
 						$setBlocksType(selection, () => $createParagraphNode());
 					} else {
 						$setBlocksType(selection, () => $createCodeNode());
 					}
 				});
 				break;
-			case 'quote':
+			case "quote":
 				this.editor.update(() => {
 					const selection = $getSelection();
 					if (!$isRangeSelection(selection)) return;
-					if (this.activeFormats.has('quote')) {
+					if (this.activeFormats.has("quote")) {
 						$setBlocksType(selection, () => $createParagraphNode());
 					} else {
 						$setBlocksType(selection, () => $createQuoteNode());
 					}
 				});
 				break;
-			case 'ul':
-				if (this.activeFormats.has('ul')) {
+			case "ul":
+				if (this.activeFormats.has("ul")) {
 					this.editor.update(() => $removeList());
 				} else {
-					this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+					this.editor.dispatchCommand(
+						INSERT_UNORDERED_LIST_COMMAND,
+						undefined,
+					);
 				}
 				break;
-			case 'ol':
-				if (this.activeFormats.has('ol')) {
+			case "ol":
+				if (this.activeFormats.has("ol")) {
 					this.editor.update(() => $removeList());
 				} else {
-					this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+					this.editor.dispatchCommand(
+						INSERT_ORDERED_LIST_COMMAND,
+						undefined,
+					);
 				}
 				break;
-			case 'checklist':
-				if (this.activeFormats.has('checklist')) {
+			case "checklist":
+				if (this.activeFormats.has("checklist")) {
 					this.editor.update(() => $removeList());
 				} else {
-					this.editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+					this.editor.dispatchCommand(
+						INSERT_CHECK_LIST_COMMAND,
+						undefined,
+					);
 				}
 				break;
 		}
@@ -690,7 +997,7 @@ export class MarkdownEditorElement extends HTMLElement {
 	}
 
 	get value(): string {
-		if (!this.editor) return '';
+		if (!this.editor) return "";
 		return getMarkdown(this.editor, this.pluginTransformers);
 	}
 
@@ -709,7 +1016,10 @@ export class MarkdownEditorElement extends HTMLElement {
 	 */
 	insertAtCursor(markdown: string) {
 		if (!this.editor) return;
-		const allTransformers = [...this.pluginTransformers, ...OBSIDIAN_TRANSFORMERS];
+		const allTransformers = [
+			...this.pluginTransformers,
+			...OBSIDIAN_TRANSFORMERS,
+		];
 
 		this.editor.update(() => {
 			const root = $getRoot();
@@ -748,26 +1058,34 @@ export class MarkdownEditorElement extends HTMLElement {
 				setTimeout(() => {
 					this.editorRoot?.focus();
 					const dom = this.editor?.getElementByKey(lastKey);
-					dom?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+					dom?.scrollIntoView({
+						block: "nearest",
+						behavior: "smooth",
+					});
 				}, 0);
 			}
 		});
 	}
 
 	static get observedAttributes() {
-		return ['placeholder', 'readonly'];
+		return ["placeholder", "readonly"];
 	}
 
-	attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
-		if (name === 'placeholder' && this.editorRoot) {
-			this.editorRoot.dataset.placeholder = newValue || '';
+	attributeChangedCallback(
+		name: string,
+		_oldValue: string,
+		newValue: string,
+	) {
+		if (name === "placeholder" && this.editorRoot) {
+			this.editorRoot.dataset.placeholder = newValue || "";
 		}
-		if (name === 'readonly' && this.editorRoot) {
-			this.editorRoot.contentEditable = newValue === null ? 'true' : 'false';
+		if (name === "readonly" && this.editorRoot) {
+			this.editorRoot.contentEditable =
+				newValue === null ? "true" : "false";
 		}
 	}
 }
 
-if (!customElements.get('markdown-editor')) {
-	customElements.define('markdown-editor', MarkdownEditorElement);
+if (!customElements.get("markdown-editor")) {
+	customElements.define("markdown-editor", MarkdownEditorElement);
 }
