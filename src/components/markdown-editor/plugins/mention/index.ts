@@ -16,6 +16,7 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 	private filtered: string[] = [];
 	private selectedIndex = 0;
 	private suggestActive = false;
+	private activeTrigger: '[[' | '@' | null = null;
 	private removeTextListener: (() => void) | null = null;
 	private editorRoot: HTMLElement | null = null;
 
@@ -37,14 +38,14 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 		this.editorRoot = editor.getRootElement();
 
 		if (this.editorRoot) {
-			this.editorRoot.addEventListener('keydown', this.onKeydown);
+			this.editorRoot.addEventListener('keydown', this.onKeydown, true);
 		}
 		this.removeTextListener = editor.registerTextContentListener(this.onTextChange);
 	}
 
 	detach(): void {
 		if (this.editorRoot) {
-			this.editorRoot.removeEventListener('keydown', this.onKeydown);
+			this.editorRoot.removeEventListener('keydown', this.onKeydown, true);
 		}
 		this.removeTextListener?.();
 		this.closeSuggest();
@@ -63,18 +64,30 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 			const textContent = anchorNode.getTextContent();
 			const offset = anchor.offset;
 			const before = textContent.slice(0, offset);
-			const triggerIdx = before.lastIndexOf('[[');
 
-			if (triggerIdx === -1 || before.indexOf(']]', triggerIdx) !== -1) {
-				this.closeSuggest();
-				return;
+			// Try [[ trigger
+			const wikiIdx = before.lastIndexOf('[[');
+			if (wikiIdx !== -1 && before.indexOf(']]', wikiIdx) === -1) {
+				const query = before.slice(wikiIdx + 2);
+				if (!query.includes('\n')) {
+					this.activeTrigger = '[[';
+					this.openSuggest(query);
+					return;
+				}
 			}
-			const query = before.slice(triggerIdx + 2);
-			if (query.includes('\n')) {
-				this.closeSuggest();
-				return;
+
+			// Try @ trigger — must be at word boundary (start of line or after space)
+			const atIdx = before.lastIndexOf('@');
+			if (atIdx !== -1 && (atIdx === 0 || /\s/.test(before[atIdx - 1]))) {
+				const query = before.slice(atIdx + 1);
+				if (!query.includes('\n') && !query.includes(' ')) {
+					this.activeTrigger = '@';
+					this.openSuggest(query);
+					return;
+				}
 			}
-			this.openSuggest(query);
+
+			this.closeSuggest();
 		});
 	};
 
@@ -88,8 +101,13 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 			this.notes = result.notes;
 		}
 		const q = query.toLowerCase();
+		const currentNote = (document.getElementById('note-name-field') as HTMLInputElement)?.value?.trim() || '';
 		this.filtered = this.notes
-			.filter(n => n.replace(/\.md$/, '').toLowerCase().includes(q))
+			.filter(n => {
+				const name = n.replace(/\.md$/, '');
+				if (name === currentNote || name.endsWith('/' + currentNote)) return false;
+				return name.toLowerCase().includes(q);
+			})
 			.slice(0, 20);
 		this.selectedIndex = 0;
 
@@ -102,10 +120,25 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 
 	private showDropdown() {
 		if (!this.hostShadow) return;
+		const container = this.hostShadow.querySelector('.editor-container');
+		if (!container) return;
+
 		if (!this.dropdown) {
 			this.dropdown = document.createElement('div');
-			this.dropdown.className = 'dropdown';
-			this.hostShadow.querySelector('.editor-container')?.appendChild(this.dropdown);
+			this.dropdown.className = 'dropdown dropdown-caret';
+			container.appendChild(this.dropdown);
+		}
+
+		// Position near caret
+		const sel = (this.hostShadow as any).getSelection?.() || window.getSelection();
+		if (sel && sel.rangeCount > 0) {
+			const range = sel.getRangeAt(0);
+			const rect = range.getBoundingClientRect();
+			const containerRect = container.getBoundingClientRect();
+			const editorRoot = this.hostShadow.querySelector('.editor-root') as HTMLElement;
+			const scroll = editorRoot?.scrollTop || 0;
+			this.dropdown.style.top = (rect.bottom - containerRect.top + scroll + 4) + 'px';
+			this.dropdown.style.left = (rect.left - containerRect.left) + 'px';
 		}
 
 		this.dropdown.innerHTML = '';
@@ -160,6 +193,8 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 		const name = lastSlash >= 0 ? notePath.slice(lastSlash + 1) : notePath;
 		const alias = lastSlash >= 0 ? name : undefined;
 
+		const trigger = this.activeTrigger;
+
 		this.editor.update(() => {
 			const selection = $getSelection();
 			if (!$isRangeSelection(selection)) return;
@@ -169,7 +204,16 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 			const textContent = anchorNode.getTextContent();
 			const offset = anchor.offset;
 			const before = textContent.slice(0, offset);
-			const triggerIdx = before.lastIndexOf('[[');
+
+			let triggerIdx: number;
+			let triggerLen: number;
+			if (trigger === '[[') {
+				triggerIdx = before.lastIndexOf('[[');
+				triggerLen = 2;
+			} else {
+				triggerIdx = before.lastIndexOf('@');
+				triggerLen = 1;
+			}
 			if (triggerIdx === -1) return;
 
 			const beforeTrigger = textContent.slice(0, triggerIdx);
@@ -196,19 +240,23 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 
 		if (e.key === 'ArrowDown') {
 			e.preventDefault();
+			e.stopImmediatePropagation();
 			this.selectedIndex = Math.min(this.selectedIndex + 1, this.filtered.length - 1);
 			this.updateSelection();
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
+			e.stopImmediatePropagation();
 			this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
 			this.updateSelection();
 		} else if (e.key === 'Enter' || e.key === 'Tab') {
 			if (this.filtered.length > 0) {
 				e.preventDefault();
+				e.stopImmediatePropagation();
 				this.selectNote(this.filtered[this.selectedIndex]);
 			}
 		} else if (e.key === 'Escape') {
 			e.preventDefault();
+			e.stopImmediatePropagation();
 			this.closeSuggest();
 		}
 	};
@@ -219,6 +267,7 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 			this.dropdown = null;
 		}
 		this.suggestActive = false;
+		this.activeTrigger = null;
 	}
 }
 

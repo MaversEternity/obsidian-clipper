@@ -252,10 +252,15 @@ export class MarkdownEditorElement extends HTMLElement {
 			.code-lang-selector select option { background: var(--background-primary); }
 			.toolbar-separator { width: 1px; height: 16px; background: var(--divider-color); margin: 0 4px; }
 			.dropdown {
-				position: absolute; bottom: 100%; left: 0; right: 0; max-height: 200px;
+				position: absolute; left: 0; right: 0; max-height: 200px;
+				bottom: 100%;
 				overflow-y: auto; background: var(--background-primary);
 				border: 1px solid var(--divider-color); border-radius: var(--radius-m);
 				box-shadow: var(--shadow-s); z-index: 100; margin-bottom: 2px;
+			}
+			.dropdown.dropdown-caret {
+				bottom: auto; left: auto; right: auto;
+				min-width: 220px; max-width: 320px;
 			}
 			.dropdown .item {
 				display: flex; align-items: center; gap: 8px; padding: 6px 10px;
