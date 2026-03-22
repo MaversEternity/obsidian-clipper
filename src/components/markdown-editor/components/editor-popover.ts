@@ -1,3 +1,5 @@
+import { $setSelection } from 'lexical';
+
 export interface PopoverField {
 	name: string;
 	label?: string;
@@ -12,11 +14,15 @@ export interface PopoverConfig {
 	fields: PopoverField[];
 	submitLabel?: string;
 	cancelLabel?: string;
+	/** Pass the Lexical editor to save/restore selection */
+	editor?: any;
 }
 
 export class EditorPopover extends HTMLElement {
 	private shadow: ShadowRoot;
 	private resolve: ((values: Record<string, string> | null) => void) | null = null;
+	private editor: any = null;
+	private savedEditorState: any = null;
 
 	constructor() {
 		super();
@@ -24,6 +30,11 @@ export class EditorPopover extends HTMLElement {
 	}
 
 	show(config: PopoverConfig): Promise<Record<string, string> | null> {
+		this.editor = config.editor || null;
+		// Save Lexical's editor state (includes selection) before dialog steals focus
+		if (this.editor) {
+			this.savedEditorState = this.editor.getEditorState().clone();
+		}
 		return new Promise((resolve) => {
 			this.resolve = resolve;
 			this.render(config);
@@ -253,6 +264,16 @@ export class EditorPopover extends HTMLElement {
 	private cleanup() {
 		if (this.onKeydown) {
 			document.removeEventListener('keydown', this.onKeydown);
+		}
+		// Restore Lexical selection state before re-focusing
+		if (this.editor && this.savedEditorState) {
+			const savedSelection = this.savedEditorState._selection;
+			if (savedSelection) {
+				this.editor.update(() => {
+					$setSelection(savedSelection.clone());
+				});
+			}
+			this.editor.getRootElement()?.focus();
 		}
 		this.remove();
 	}

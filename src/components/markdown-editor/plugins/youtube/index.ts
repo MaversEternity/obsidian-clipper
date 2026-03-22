@@ -91,6 +91,7 @@ export class EditorPluginYouTube extends HTMLElement implements EditorPlugin {
 				{ name: 'url', placeholder: 'YouTube URL (https://youtube.com/watch?v=...)' },
 			],
 			submitLabel: 'Insert video',
+			editor: this.editor || undefined,
 		});
 
 		console.debug('[youtube-plugin] popover result:', result);

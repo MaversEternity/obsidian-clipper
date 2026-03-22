@@ -1,6 +1,6 @@
 import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, PASTE_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey, $getRoot, $createParagraphNode, $createTextNode, $insertNodes } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
-import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
+import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, $removeList, ListNode } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
 import { $createCodeNode, $isCodeNode, CodeNode } from '@lexical/code';
 import { $createLinkNode, $isLinkNode } from '@lexical/link';
@@ -33,6 +33,7 @@ export class MarkdownEditorElement extends HTMLElement {
 	private plugins: EditorPlugin[] = [];
 	private pluginTransformers: Transformer[] = [];
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private activeFormats = new Set<string>();
 	private langSelector: HTMLElement | null = null;
 	private currentCodeNodeKey: string | null = null;
 
@@ -548,6 +549,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		if (!active.has('codeblock')) {
 			this.hideLangSelector();
 		}
+		this.activeFormats = active;
 		this.toolbarHandle.setActiveStates(active);
 	}
 
@@ -618,7 +620,11 @@ export class MarkdownEditorElement extends HTMLElement {
 			case 'h1': case 'h2': case 'h3':
 				this.editor.update(() => {
 					const selection = $getSelection();
-					if ($isRangeSelection(selection)) {
+					if (!$isRangeSelection(selection)) return;
+					// Toggle off if same heading is active
+					if (this.activeFormats.has(action)) {
+						$setBlocksType(selection, () => $createParagraphNode());
+					} else {
 						$setBlocksType(selection, () => $createHeadingNode(action as HeadingTagType));
 					}
 				});
@@ -626,7 +632,10 @@ export class MarkdownEditorElement extends HTMLElement {
 			case 'codeblock':
 				this.editor.update(() => {
 					const selection = $getSelection();
-					if ($isRangeSelection(selection)) {
+					if (!$isRangeSelection(selection)) return;
+					if (this.activeFormats.has('codeblock')) {
+						$setBlocksType(selection, () => $createParagraphNode());
+					} else {
 						$setBlocksType(selection, () => $createCodeNode());
 					}
 				});
@@ -634,19 +643,34 @@ export class MarkdownEditorElement extends HTMLElement {
 			case 'quote':
 				this.editor.update(() => {
 					const selection = $getSelection();
-					if ($isRangeSelection(selection)) {
+					if (!$isRangeSelection(selection)) return;
+					if (this.activeFormats.has('quote')) {
+						$setBlocksType(selection, () => $createParagraphNode());
+					} else {
 						$setBlocksType(selection, () => $createQuoteNode());
 					}
 				});
 				break;
 			case 'ul':
-				this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+				if (this.activeFormats.has('ul')) {
+					this.editor.update(() => $removeList());
+				} else {
+					this.editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+				}
 				break;
 			case 'ol':
-				this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+				if (this.activeFormats.has('ol')) {
+					this.editor.update(() => $removeList());
+				} else {
+					this.editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+				}
 				break;
 			case 'checklist':
-				this.editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+				if (this.activeFormats.has('checklist')) {
+					this.editor.update(() => $removeList());
+				} else {
+					this.editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+				}
 				break;
 		}
 	}

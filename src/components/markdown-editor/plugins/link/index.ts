@@ -256,6 +256,7 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 				{ name: 'url', label: 'Link', placeholder: 'https://', value: currentUrl, required: true },
 			],
 			submitLabel: 'Save',
+			editor: this.editor || undefined,
 		});
 
 		const capturedKey = nodeKey;
@@ -316,6 +317,7 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 				{ name: 'url', label: 'Link', placeholder: 'https://', required: true },
 			],
 			submitLabel: 'Insert',
+			editor: this.editor || undefined,
 		});
 
 		if (result && result.url) {

@@ -410,6 +410,7 @@ export class EditorPluginTable extends HTMLElement implements EditorPlugin {
 				{ name: 'cols', label: 'Columns', placeholder: '3', type: 'number' },
 			],
 			submitLabel: 'Insert',
+			editor: this.editor || undefined,
 		});
 		if (!result) return;
 		const rows = Math.max(1, Math.min(20, parseInt(result.rows) || 3));

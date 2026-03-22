@@ -1,8 +1,8 @@
 import type { Klass, LexicalEditor, LexicalNode } from 'lexical';
 import type { TextMatchTransformer, Transformer } from '@lexical/markdown';
-import { $getSelection, $isRangeSelection, PASTE_COMMAND, COMMAND_PRIORITY_CRITICAL } from 'lexical';
+import { $getSelection, $isRangeSelection, $isNodeSelection, $getNodeByKey, PASTE_COMMAND, COMMAND_PRIORITY_CRITICAL } from 'lexical';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
-import { ImageNode, $createImageNode } from '../../nodes/ImageNode';
+import { ImageNode, $createImageNode, $isImageNode } from '../../nodes/ImageNode';
 import { EditorPopover } from '../../components/editor-popover';
 
 const IMAGE_URL_RE = /^https?:\/\/\S+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?[^\s]*)?$/i;
@@ -86,25 +86,55 @@ export class EditorPluginImage extends HTMLElement implements EditorPlugin {
 	private async showImageDialog() {
 		if (!this.editor || !this.hostShadow) return;
 
+		// Check if an image is currently selected — edit mode
+		let existingSrc = '';
+		let existingAlt = '';
+		let existingKey: string | null = null;
+		this.editor.getEditorState().read(() => {
+			const selection = $getSelection();
+			if ($isNodeSelection(selection)) {
+				const nodes = selection.getNodes();
+				if (nodes.length === 1 && $isImageNode(nodes[0])) {
+					const img = nodes[0] as ImageNode;
+					existingSrc = img.__src;
+					existingAlt = img.__alt;
+					existingKey = img.getKey();
+				}
+			}
+		});
+
+		const isEditing = !!existingKey;
 		const popover = new EditorPopover();
 		const container = this.hostShadow.querySelector('.editor-container');
 		container?.appendChild(popover);
 
 		const result = await popover.show({
+			title: isEditing ? 'Edit Image' : 'Insert Image',
 			fields: [
-				{ name: 'url', placeholder: 'Image URL (https://...)' },
-				{ name: 'alt', placeholder: 'Alt text' },
+				{ name: 'url', placeholder: 'Image URL (https://...)', value: existingSrc },
+				{ name: 'alt', placeholder: 'Alt text', value: existingAlt },
 			],
-			submitLabel: 'Insert image',
+			submitLabel: isEditing ? 'Update' : 'Insert image',
+			editor: this.editor || undefined,
 		});
 
 		if (result && result.url) {
+			const savedKey = existingKey;
 			this.editor.update(() => {
-				const selection = $getSelection();
-				if (!$isRangeSelection(selection)) return;
-				selection.insertNodes([$createImageNode(result.url, result.alt)]);
+				if (savedKey) {
+					const node = $getNodeByKey(savedKey);
+					if (node && $isImageNode(node)) {
+						const writable = node.getWritable();
+						writable.__src = result.url;
+						writable.__alt = result.alt || '';
+					}
+				} else {
+					const selection = $getSelection();
+					if ($isRangeSelection(selection)) {
+						selection.insertNodes([$createImageNode(result.url, result.alt)]);
+					}
+				}
 			});
-			this.editor.getRootElement()?.focus();
 		}
 	}
 }
