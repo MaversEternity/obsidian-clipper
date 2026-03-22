@@ -3,6 +3,11 @@ import { EditorDropdown } from './components/editor-dropdown';
 
 type ToolbarAction = (action: string) => void;
 
+export interface ToolbarHandle {
+	element: HTMLElement;
+	setActiveStates(activeFormats: Set<string>): void;
+}
+
 interface ToolbarItem {
 	type: 'button' | 'separator' | 'dropdown';
 	action?: string;
@@ -51,9 +56,10 @@ function makeSvg(icon: string): string {
 export function createToolbar(
 	onAction: ToolbarAction,
 	pluginButtons: ToolbarButtonDef[] = [],
-): HTMLElement {
+): ToolbarHandle {
 	const toolbar = document.createElement('div');
 	toolbar.className = 'editor-toolbar';
+	const buttonMap = new Map<string, HTMLElement>();
 
 	for (const item of BASE_ITEMS) {
 		if (item.type === 'separator') {
@@ -67,6 +73,10 @@ export function createToolbar(
 			const dropdown = new EditorDropdown();
 			dropdown.init(makeSvg(item.icon!), item.title || '', item.options, onAction);
 			toolbar.appendChild(dropdown);
+			// Store dropdown reference for heading states
+			for (const opt of item.options) {
+				buttonMap.set(opt.action, dropdown);
+			}
 			continue;
 		}
 
@@ -74,12 +84,14 @@ export function createToolbar(
 		btn.className = 'toolbar-btn';
 		btn.title = item.title || '';
 		btn.type = 'button';
+		btn.dataset.action = item.action!;
 		btn.innerHTML = makeSvg(item.icon!);
 		btn.addEventListener('mousedown', (e) => {
 			e.preventDefault();
 			onAction(item.action!);
 		});
 		toolbar.appendChild(btn);
+		buttonMap.set(item.action!, btn);
 	}
 
 	if (pluginButtons.length > 0) {
@@ -98,8 +110,31 @@ export function createToolbar(
 				pb.onAction(null as any);
 			});
 			toolbar.appendChild(btn);
+			buttonMap.set(pb.action, btn);
 		}
 	}
 
-	return toolbar;
+	return {
+		element: toolbar,
+		setActiveStates(activeFormats: Set<string>) {
+			const dropdownActive = new Map<EditorDropdown, string>();
+			for (const [action, el] of buttonMap) {
+				const isActive = activeFormats.has(action);
+				if (el instanceof EditorDropdown) {
+					if (isActive) dropdownActive.set(el, action);
+				} else {
+					el.classList.toggle('is-active', isActive);
+				}
+			}
+			// Update all dropdowns — active ones get the action label, inactive ones reset
+			const allDropdowns = new Set<EditorDropdown>();
+			for (const el of buttonMap.values()) {
+				if (el instanceof EditorDropdown) allDropdowns.add(el);
+			}
+			for (const dd of allDropdowns) {
+				const activeAction = dropdownActive.get(dd);
+				dd.setActive(!!activeAction, activeAction);
+			}
+		},
+	};
 }

@@ -1,10 +1,12 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isTextNode } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
-import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND } from '@lexical/list';
-import { $createHeadingNode, $createQuoteNode, type HeadingTagType } from '@lexical/rich-text';
+import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
+import { $isLinkNode } from '@lexical/link';
 import { $setBlocksType } from '@lexical/selection';
+import { $getNearestNodeOfType } from '@lexical/utils';
 import { createMarkdownEditor, setMarkdown, getMarkdown } from './editor';
-import { createToolbar } from './toolbar';
+import { createToolbar, type ToolbarHandle } from './toolbar';
 import { isEditorPlugin, type EditorPlugin, type ToolbarButtonDef } from './plugin-interface';
 
 // Import plugin registrations
@@ -17,6 +19,7 @@ export class MarkdownEditorElement extends HTMLElement {
 	private shadow: ShadowRoot;
 	private editor: LexicalEditor | null = null;
 	private editorRoot: HTMLElement | null = null;
+	private toolbarHandle: ToolbarHandle | null = null;
 	private plugins: EditorPlugin[] = [];
 	private pluginTransformers: Transformer[] = [];
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -112,6 +115,7 @@ export class MarkdownEditorElement extends HTMLElement {
 				background: transparent; color: var(--text-muted); cursor: pointer;
 			}
 			.toolbar-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+			.toolbar-btn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 			.toolbar-separator { width: 1px; height: 16px; background: var(--divider-color); margin: 0 4px; }
 			.dropdown {
 				position: absolute; bottom: 100%; left: 0; right: 0; max-height: 200px;
@@ -139,8 +143,8 @@ export class MarkdownEditorElement extends HTMLElement {
 		this.editorRoot.contentEditable = 'true';
 		this.editorRoot.dataset.placeholder = this.getAttribute('placeholder') || '';
 
-		const toolbar = createToolbar((action) => this.handleToolbarAction(action), pluginButtons);
-		container.appendChild(toolbar);
+		this.toolbarHandle = createToolbar((action) => this.handleToolbarAction(action), pluginButtons);
+		container.appendChild(this.toolbarHandle.element);
 		container.appendChild(this.editorRoot);
 		this.shadow.appendChild(container);
 
@@ -156,6 +160,13 @@ export class MarkdownEditorElement extends HTMLElement {
 			plugin.attach(this.editor, this.shadow);
 		}
 
+		// Update toolbar active states on selection change
+		this.editor.registerUpdateListener(({ editorState }) => {
+			editorState.read(() => {
+				this.updateToolbarState();
+			});
+		});
+
 		// Dispatch change events (debounced)
 		this.editor.registerUpdateListener(() => {
 			if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -170,6 +181,47 @@ export class MarkdownEditorElement extends HTMLElement {
 		if (initialValue) {
 			setMarkdown(this.editor, initialValue, this.pluginTransformers);
 		}
+	}
+
+	private updateToolbarState() {
+		if (!this.toolbarHandle) return;
+		const active = new Set<string>();
+		const selection = $getSelection();
+		if (!$isRangeSelection(selection)) {
+			this.toolbarHandle.setActiveStates(active);
+			return;
+		}
+
+		// Text formats
+		if (selection.hasFormat('bold')) active.add('bold');
+		if (selection.hasFormat('italic')) active.add('italic');
+		if (selection.hasFormat('strikethrough')) active.add('strikethrough');
+		if (selection.hasFormat('code')) active.add('code');
+
+		// Block types — check the anchor node's parent chain
+		const anchorNode = selection.anchor.getNode();
+		const element = $isTextNode(anchorNode) ? anchorNode.getParent() : anchorNode;
+
+		if (element) {
+			if ($isHeadingNode(element)) {
+				active.add(element.getTag()); // 'h1', 'h2', 'h3'
+			}
+			if ($isQuoteNode(element)) {
+				active.add('quote');
+			}
+			if ($isLinkNode(element) || $isLinkNode(element.getParent())) {
+				active.add('link');
+			}
+			const listNode = $getNearestNodeOfType(anchorNode, ListNode);
+			if (listNode) {
+				const listType = listNode.getListType();
+				if (listType === 'bullet') active.add('ul');
+				if (listType === 'number') active.add('ol');
+				if (listType === 'check') active.add('checklist');
+			}
+		}
+
+		this.toolbarHandle.setActiveStates(active);
 	}
 
 	private handleToolbarAction(action: string) {

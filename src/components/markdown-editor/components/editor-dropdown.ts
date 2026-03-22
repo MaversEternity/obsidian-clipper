@@ -5,9 +5,13 @@ export interface DropdownOption {
 
 export class EditorDropdown extends HTMLElement {
 	private shadow: ShadowRoot;
+	private trigger: HTMLButtonElement | null = null;
+	private triggerLabel: HTMLElement | null = null;
 	private menu: HTMLElement | null = null;
 	private isOpen = false;
+	private defaultIcon = '';
 	private onAction: ((action: string) => void) | null = null;
+	private options: DropdownOption[] = [];
 
 	constructor() {
 		super();
@@ -16,6 +20,8 @@ export class EditorDropdown extends HTMLElement {
 
 	init(icon: string, title: string, options: DropdownOption[], onAction: (action: string) => void) {
 		this.onAction = onAction;
+		this.defaultIcon = icon;
+		this.options = options;
 
 		const style = document.createElement('style');
 		style.textContent = `
@@ -27,7 +33,9 @@ export class EditorDropdown extends HTMLElement {
 				height: 26px; gap: 2px;
 			}
 			button:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+			button.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
 			.chevron { opacity: 0.5; }
+			.label { font-size: 10px; font-weight: 600; text-transform: uppercase; }
 			.menu {
 				position: absolute; top: 100%; left: 0; z-index: 100;
 				background: var(--background-primary); border: 1px solid var(--divider-color);
@@ -43,16 +51,17 @@ export class EditorDropdown extends HTMLElement {
 		`;
 		this.shadow.appendChild(style);
 
-		const btn = document.createElement('button');
-		btn.title = title;
-		btn.type = 'button';
-		btn.innerHTML = `${icon} <svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
-		btn.addEventListener('mousedown', (e) => {
+		this.trigger = document.createElement('button');
+		this.trigger.title = title;
+		this.trigger.type = 'button';
+		this.trigger.innerHTML = `<span class="icon">${icon}</span><span class="label"></span><svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+		this.triggerLabel = this.trigger.querySelector('.label')!;
+		this.trigger.addEventListener('mousedown', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
 			this.toggle();
 		});
-		this.shadow.appendChild(btn);
+		this.shadow.appendChild(this.trigger);
 
 		this.menu = document.createElement('div');
 		this.menu.className = 'menu';
@@ -101,6 +110,20 @@ export class EditorDropdown extends HTMLElement {
 		if (this.menu) {
 			this.menu.hidden = true;
 			this.isOpen = false;
+		}
+	}
+
+	setActive(active: boolean, activeAction?: string) {
+		this.trigger?.classList.toggle('is-active', active);
+		const icon = this.trigger?.querySelector('.icon') as HTMLElement;
+		if (this.triggerLabel) {
+			if (active && activeAction) {
+				this.triggerLabel.textContent = activeAction.toUpperCase();
+				if (icon) icon.hidden = true;
+			} else {
+				this.triggerLabel.textContent = '';
+				if (icon) icon.hidden = false;
+			}
 		}
 	}
 }
