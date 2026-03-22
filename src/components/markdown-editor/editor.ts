@@ -1,6 +1,6 @@
 import { createEditor, type Klass, type LexicalEditor, type LexicalNode } from 'lexical';
 import { registerRichText } from '@lexical/rich-text';
-import { registerList, ListNode, ListItemNode } from '@lexical/list';
+import { registerList, registerCheckList, ListNode, ListItemNode } from '@lexical/list';
 import { LinkNode, AutoLinkNode } from '@lexical/link';
 import { CodeNode, CodeHighlightNode, registerCodeHighlighting } from '@lexical/code';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
@@ -45,6 +45,7 @@ export function createMarkdownEditor(config: EditorConfig): LexicalEditor {
 	editor.setRootElement(config.rootElement);
 	registerRichText(editor);
 	registerList(editor);
+	registerCheckList(editor);
 
 	const allTransformers = [...(config.extraTransformers || []), ...OBSIDIAN_TRANSFORMERS];
 	registerMarkdownShortcuts(editor, allTransformers);

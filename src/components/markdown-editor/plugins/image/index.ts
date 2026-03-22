@@ -1,9 +1,11 @@
 import type { Klass, LexicalEditor, LexicalNode } from 'lexical';
 import type { TextMatchTransformer, Transformer } from '@lexical/markdown';
-import { $getSelection, $isRangeSelection } from 'lexical';
+import { $getSelection, $isRangeSelection, PASTE_COMMAND, COMMAND_PRIORITY_CRITICAL } from 'lexical';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { ImageNode, $createImageNode } from '../../nodes/ImageNode';
 import { EditorPopover } from '../../components/editor-popover';
+
+const IMAGE_URL_RE = /^https?:\/\/\S+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?[^\s]*)?$/i;
 
 const IMAGE_TRANSFORMER: TextMatchTransformer = {
 	dependencies: [ImageNode],
@@ -44,12 +46,39 @@ export class EditorPluginImage extends HTMLElement implements EditorPlugin {
 		};
 	}
 
+	private cleanupCommands: (() => void) | null = null;
+
+	private cleanupPaste: (() => void) | null = null;
+
 	attach(editor: LexicalEditor, hostShadow: ShadowRoot): void {
 		this.editor = editor;
 		this.hostShadow = hostShadow;
+		this.cleanupCommands = ImageNode.registerCommands(editor);
+
+		// Intercept paste — detect image URLs before link plugin
+		this.cleanupPaste = editor.registerCommand(
+			PASTE_COMMAND,
+			(event: ClipboardEvent) => {
+				const text = event.clipboardData?.getData('text/plain')?.trim();
+				if (!text || !IMAGE_URL_RE.test(text)) return false;
+
+				event.preventDefault();
+				editor.update(() => {
+					const selection = $getSelection();
+					if (!$isRangeSelection(selection)) return;
+					selection.insertNodes([$createImageNode(text, '')]);
+				});
+				return true;
+			},
+			COMMAND_PRIORITY_CRITICAL, // Higher than link plugin's COMMAND_PRIORITY_HIGH
+		);
 	}
 
 	detach(): void {
+		this.cleanupCommands?.();
+		this.cleanupPaste?.();
+		this.cleanupCommands = null;
+		this.cleanupPaste = null;
 		this.editor = null;
 		this.hostShadow = null;
 	}

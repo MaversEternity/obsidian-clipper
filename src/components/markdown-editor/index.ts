@@ -1,4 +1,4 @@
-import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isTextNode, $getNodeByKey } from 'lexical';
+import { type LexicalEditor, type Klass, type LexicalNode, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $isNodeSelection, $isTextNode, $getNodeByKey } from 'lexical';
 import type { Transformer } from '@lexical/markdown';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND, $isListNode, ListNode } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, type HeadingTagType } from '@lexical/rich-text';
@@ -97,6 +97,40 @@ export class MarkdownEditorElement extends HTMLElement {
 				background: var(--background-secondary); border-radius: var(--radius-s); padding: 1px 4px;
 			}
 			.cm-link,.editor-wikilink { color: var(--text-accent); text-decoration: none; cursor: pointer; }
+			.editor-image-wrapper { position: relative; margin: 0.4em 0; }
+			.editor-image-wrapper[data-lexical-decorator="true"] { outline: none; }
+			.editor-image-card {
+				position: relative; display: inline-block;
+				border-radius: var(--radius-m, 8px); overflow: hidden;
+				border: 2px solid transparent;
+				transition: border-color 0.15s ease;
+			}
+			.editor-image-wrapper.selected .editor-image-card {
+				border-color: var(--interactive-accent);
+			}
+			.editor-image {
+				display: block; max-width: 100%;
+				border-radius: var(--radius-m, 8px) var(--radius-m, 8px) 0 0;
+			}
+			.editor-image-delete {
+				position: absolute; top: 8px; right: 8px;
+				width: 28px; height: 28px; border-radius: 50%;
+				border: none; cursor: pointer;
+				background: rgba(0,0,0,0.6); color: #fff;
+				display: flex; align-items: center; justify-content: center;
+				opacity: 0; transition: opacity 0.15s ease;
+			}
+			.editor-image-card:hover .editor-image-delete { opacity: 1; }
+			.editor-image-delete:hover { background: rgba(200,0,0,0.8); }
+			.editor-image-alt {
+				display: block; width: 100%; border: none;
+				background: var(--background-secondary); color: var(--text-muted);
+				font-size: var(--font-ui-smaller, 12px); padding: 6px 10px;
+				outline: none;
+				border-radius: 0 0 var(--radius-m, 8px) var(--radius-m, 8px);
+			}
+			.editor-image-alt::placeholder { color: var(--text-faint); }
+			.editor-image-alt:focus { color: var(--text-normal); background: var(--background-primary); }
 			.cm-hashtag { color: var(--text-accent); background: var(--tag-background, rgba(var(--interactive-accent-rgb), 0.1)); border-radius: var(--radius-s); padding: 1px 4px; }
 			.editor-highlight { background: var(--text-highlight-bg); border-radius: 2px; }
 			.cm-quote {
@@ -104,6 +138,29 @@ export class MarkdownEditorElement extends HTMLElement {
 				border-left: 3px solid var(--interactive-accent); color: var(--text-muted);
 			}
 			.editor-root ul,.editor-root ol { margin: 0.2em 0; padding-left: 1.5em; }
+			.editor-root .cm-checklist { list-style: none; padding-left: 0.5em; }
+			.editor-root .cm-list-item-checked,
+			.editor-root .cm-list-item-unchecked {
+				position: relative; padding-left: 1.5em; cursor: pointer;
+			}
+			.editor-root .cm-list-item-checked::before,
+			.editor-root .cm-list-item-unchecked::before {
+				content: ''; position: absolute; left: 0; top: 4px;
+				width: 14px; height: 14px; border-radius: 3px;
+				border: 2px solid var(--text-faint);
+				background: transparent;
+			}
+			.editor-root .cm-list-item-checked::before {
+				background: var(--interactive-accent); border-color: var(--interactive-accent);
+			}
+			.editor-root .cm-list-item-checked::after {
+				content: ''; position: absolute; left: 3px; top: 6px;
+				width: 8px; height: 4px;
+				border-left: 2px solid var(--text-on-accent);
+				border-bottom: 2px solid var(--text-on-accent);
+				transform: rotate(-45deg);
+			}
+			.editor-root .cm-list-item-checked { text-decoration: line-through; color: var(--text-muted); }
 			.cm-codeblock {
 				font-family: var(--font-monospace-default); font-size: 0.85em;
 				background: var(--background-secondary); border-radius: var(--radius-s);
@@ -375,6 +432,32 @@ export class MarkdownEditorElement extends HTMLElement {
 		if (!this.toolbarHandle) return;
 		const active = new Set<string>();
 		const selection = $getSelection();
+
+		// Handle node selection (e.g., image selected)
+		if ($isNodeSelection(selection)) {
+			const nodes = selection.getNodes();
+			const { $isImageNode } = require('./nodes/ImageNode');
+			if (nodes.length === 1 && $isImageNode(nodes[0])) {
+				active.add('image');
+				// Add visual selection to the image wrapper
+				const key = nodes[0].getKey();
+				const dom = this.editor?.getElementByKey(key);
+				dom?.classList.add('selected');
+			}
+			// Clear previous image selections
+			this.editorRoot?.querySelectorAll('.editor-image-wrapper.selected').forEach(el => {
+				const nodeKey = (el as any).__lexicalKey;
+				if (!nodeKey || !selection.has(nodeKey)) el.classList.remove('selected');
+			});
+			this.toolbarHandle.setActiveStates(active);
+			return;
+		}
+
+		// Clear image selections when in range selection
+		this.editorRoot?.querySelectorAll('.editor-image-wrapper.selected').forEach(el => {
+			el.classList.remove('selected');
+		});
+
 		if (!$isRangeSelection(selection)) {
 			this.toolbarHandle.setActiveStates(active);
 			return;
