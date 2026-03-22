@@ -341,9 +341,10 @@ export class EditorPluginLink extends HTMLElement implements EditorPlugin {
 					if (!linkNode || !$isLinkNode(linkNode)) return;
 					linkNode.setURL(result.url);
 					if (result.text && result.text !== linkNode.getTextContent()) {
-						const children = linkNode.getChildren();
-						for (const child of children) child.remove();
-						linkNode.append($createTextNode(result.text));
+						const firstChild = linkNode.getFirstChild();
+						if ($isTextNode(firstChild)) {
+							firstChild.setTextContent(result.text);
+						}
 					}
 				});
 			} else {
