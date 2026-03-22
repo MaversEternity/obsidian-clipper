@@ -72,7 +72,7 @@ export class MarkdownEditorElement extends HTMLElement {
 		// Styles
 		const style = document.createElement('style');
 		style.textContent = `
-			:host { display: flex; flex-grow: 1; position: relative; }
+			:host { display: flex; flex-grow: 1; position: relative; min-height: 0; overflow: hidden; }
 			.editor-container { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; position: relative; overflow: hidden; }
 			.editor-root {
 				flex-grow: 1; outline: none;
