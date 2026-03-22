@@ -27,6 +27,7 @@ export const obsidianTheme: EditorThemeClasses = {
 		listitemChecked: 'cm-list-item-checked',
 		listitemUnchecked: 'cm-list-item-unchecked',
 	},
+	hashtag: 'cm-hashtag',
 	quote: 'cm-quote',
 	code: 'cm-codeblock',
 	codeHighlight: {

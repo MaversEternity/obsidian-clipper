@@ -15,6 +15,7 @@ import './plugins/mention';
 import './plugins/link';
 import './plugins/image';
 import './plugins/youtube';
+import './plugins/hashtag';
 
 export class MarkdownEditorElement extends HTMLElement {
 	private shadow: ShadowRoot;
@@ -95,6 +96,7 @@ export class MarkdownEditorElement extends HTMLElement {
 				background: var(--background-secondary); border-radius: var(--radius-s); padding: 1px 4px;
 			}
 			.cm-link,.editor-wikilink { color: var(--text-accent); text-decoration: none; cursor: pointer; }
+			.cm-hashtag { color: var(--text-accent); background: var(--tag-background, rgba(var(--interactive-accent-rgb), 0.1)); border-radius: var(--radius-s); padding: 1px 4px; }
 			.editor-highlight { background: var(--text-highlight-bg); border-radius: 2px; }
 			.cm-quote {
 				margin: 0.4em 0; padding: 0 0 0 1em;

@@ -619,6 +619,21 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 				determineMainAction();
 
+				// Sync hashtags from editor content to tags property field
+				const editorEl = document.getElementById('note-content-field');
+				editorEl?.addEventListener('hashtags-change', ((e: CustomEvent) => {
+					const tags: string[] = e.detail.tags;
+					const tagsInput = document.getElementById('tags') as MultitextInput | null;
+					if (tagsInput) {
+						// Merge editor hashtags with existing manual tags
+						const currentTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean);
+						const manualTags = currentTags.filter(t => !tagsInput.dataset.editorTags?.split(',').includes(t));
+						const merged = [...new Set([...manualTags, ...tags])];
+						tagsInput.dataset.editorTags = tags.join(',');
+						tagsInput.value = merged.join(', ');
+					}
+				}) as EventListener);
+
 				const showMoreActionsButton = document.getElementById('show-variables');
 				if (showMoreActionsButton) {
 					showMoreActionsButton.addEventListener('click', (e) => {
