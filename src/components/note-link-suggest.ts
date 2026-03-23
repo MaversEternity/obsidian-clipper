@@ -1,4 +1,4 @@
-import { fetchVaultNotes } from '../utils/obsidian-rest-api';
+import { getObsidianApi } from '../di/container';
 
 const STYLES = `
 :host {
@@ -115,7 +115,7 @@ export class NoteLinkSuggest extends HTMLElement {
 		this.triggerStart = triggerIdx;
 
 		if (this.notes.length === 0) {
-			const result = await fetchVaultNotes();
+			const result = await getObsidianApi().listNotes();
 			console.debug('[note-link-suggest] fetch result:', result.notes?.length, 'error:', result.error);
 			if (result.error || result.notes.length === 0) {
 				this.close();

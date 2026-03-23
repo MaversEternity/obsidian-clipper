@@ -23,7 +23,7 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
-import { updateNoteContent, fetchVaultDirectories, deleteNote } from '../utils/obsidian-rest-api';
+import { getObsidianApi } from '../di/container';
 import '../components/multitext-input';
 import { MultitextInput } from '../components/multitext-input';
 import '../components/markdown-editor';
@@ -417,11 +417,11 @@ async function handleUpdateNote(): Promise<void> {
 		? (notePreviewData.notePath ? `${notePreviewData.notePath}/${notePreviewData.noteName}.md` : `${notePreviewData.noteName}.md`)
 		: notePath;
 
-	const result = await updateNoteContent(notePath, fileContent);
+	const result = await getObsidianApi().updateNote(notePath, fileContent);
 
 	// If path changed, delete the old note
 	if (result.success && notePath !== originalPath) {
-		await deleteNote(originalPath);
+		await getObsidianApi().deleteNote(originalPath);
 		// Update stored preview data to reflect new location
 		if (notePreviewData) {
 			notePreviewData = { noteName, noteContent: fileContent, notePath: path };
@@ -466,7 +466,7 @@ async function handleDeleteNote(): Promise<void> {
 		mainButton.setAttribute('disabled', 'true');
 	}
 
-	const result = await deleteNote(notePath);
+	const result = await getObsidianApi().deleteNote(notePath);
 
 	if (mainButton) {
 		mainButton.removeAttribute('disabled');
@@ -1063,7 +1063,7 @@ async function initializeContextDropdown() {
 	const contextSelect = document.getElementById('context-select') as HTMLSelectElement;
 	if (!contextSelect) return;
 
-	const result = await fetchVaultDirectories();
+	const result = await getObsidianApi().listDirectories();
 	if (result.directories.length > 0) {
 		for (const dir of result.directories) {
 			const option = document.createElement('option');
@@ -1093,7 +1093,7 @@ async function initializeContextDropdown() {
 			if (name && name.trim()) {
 				const trimmed = name.trim();
 				const placeholder = `${trimmed}/${trimmed}.md`;
-				const result = await updateNoteContent(placeholder, `# ${trimmed}\n`);
+				const result = await getObsidianApi().updateNote(placeholder, `# ${trimmed}\n`);
 				console.log('[popup] createContext result:', result);
 				if (result.error) {
 					console.error('[popup] createContext failed:', result.error);

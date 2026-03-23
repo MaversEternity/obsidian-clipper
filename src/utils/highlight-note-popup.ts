@@ -1,5 +1,5 @@
 import { NoteRef } from './highlighter';
-import { fetchNoteContent, getRESTConfig, saveRESTConfig } from './obsidian-rest-api';
+import { getObsidianApi } from '../di/container';
 
 const POPUP_CLASS = 'obsidian-note-popup';
 
@@ -65,7 +65,7 @@ export async function showNotePopup(noteRef: NoteRef, anchorRect: DOMRect) {
 	document.body.appendChild(popup);
 
 	// Check if API key is configured
-	const config = await getRESTConfig();
+	const config = await getObsidianApi().getConfig();
 
 	if (!config.apiKey) {
 		// Show inline setup form
@@ -115,7 +115,7 @@ function showApiKeySetup(content: HTMLElement, noteRef: NoteRef, popup: HTMLElem
 		saveBtn.textContent = 'Saving...';
 		saveBtn.setAttribute('disabled', 'true');
 
-		await saveRESTConfig({ host: 'http://localhost:27123', apiKey });
+		await getObsidianApi().saveConfig({ host: 'http://localhost:27123', apiKey });
 
 		// Now try loading the note
 		content.textContent = '';
@@ -140,7 +140,7 @@ function showApiKeySetup(content: HTMLElement, noteRef: NoteRef, popup: HTMLElem
 
 async function loadNoteContent(content: HTMLElement, noteRef: NoteRef) {
 	const notePath = noteRef.path ? `${noteRef.path}/${noteRef.name}.md` : `${noteRef.name}.md`;
-	const result = await fetchNoteContent(notePath);
+	const result = await getObsidianApi().fetchNote(notePath);
 
 	content.textContent = '';
 

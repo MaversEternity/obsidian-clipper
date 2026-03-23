@@ -42,15 +42,38 @@ export interface MessageMap {
 	'toggle-iframe': { request: void; response: void };
 	getActiveTabAndToggleIframe: { request: void; response: { success?: boolean; error?: string } };
 
-	// Obsidian API
+	// Relay
 	sendMessageToTab: { request: { tabId: number; message: Record<string, unknown> }; response: unknown };
-	updateObsidianNote: { request: { path: string; content: string }; response: { success: boolean; error?: string } };
+
+	// Obsidian API (all proxied through background)
 	searchObsidianNotes: {
 		request: { host: string; apiKey: string };
 		response: { notes?: { filename: string; tags: string[] }[]; error?: string };
 	};
-	fetchObsidianNote: { request: { path: string }; response: { content: string; error?: string } };
-	fetchVaultNotes: { request: void; response: { files?: string[]; error?: string } };
+	fetchObsidianNote: {
+		request: { host: string; apiKey: string; notePath: string };
+		response: { content?: string; error?: string };
+	};
+	updateObsidianNote: {
+		request: { host: string; apiKey: string; notePath: string; content: string };
+		response: { success?: boolean; error?: string };
+	};
+	deleteObsidianNote: {
+		request: { host: string; apiKey: string; notePath: string };
+		response: { success?: boolean; error?: string };
+	};
+	listObsidianNotes: {
+		request: { host: string; apiKey: string };
+		response: { notes?: string[]; error?: string };
+	};
+	listObsidianDirectories: {
+		request: { host: string; apiKey: string };
+		response: { directories?: string[]; error?: string };
+	};
+	checkObsidianAvailable: {
+		request: { host: string; apiKey: string };
+		response: { available?: boolean };
+	};
 }
 
 /** Extract action names */

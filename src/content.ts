@@ -494,6 +494,7 @@ declare global {
 
 	async function refreshCrossSiteMatches() {
 		removeCrossSiteOverlays();
+		lookup.unmark();
 		if (generalSettings.lookupEnabled) {
 			await lookup.mark(document.body, handleLookupClick);
 		}

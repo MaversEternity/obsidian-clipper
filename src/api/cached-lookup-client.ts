@@ -1,8 +1,9 @@
 import { LookupClient, LookupMatch, NoteRef } from './lookup-client';
+import browser from '../utils/browser-polyfill';
 
 /**
  * CachedLookupClient — adds caching + client-side regex matching.
- * Subclasses implement fetchData() to load backend data.
+ * Cache stores ALL notes; context filter applied at query time.
  */
 export abstract class CachedLookupClient implements LookupClient {
 	private cache: Map<string, NoteRef[]> | null = null;
@@ -11,15 +12,25 @@ export abstract class CachedLookupClient implements LookupClient {
 		const tagMap = await this.getTagMap();
 		if (tagMap.size === 0) return [];
 
+		// Load active context — filter at query time, not cache time
+		const contextData = await browser.storage.local.get('activeContext');
+		const activeContext = (contextData.activeContext as string) || '';
+
 		const normalizedText = text.replace(/\s+/g, ' ').trim().toLowerCase();
 		const matches: LookupMatch[] = [];
 
 		for (const [tag, notes] of tagMap) {
+			// Apply context filter
+			const filtered = activeContext
+				? notes.filter(n => n.filename.startsWith(activeContext + '/'))
+				: notes;
+			if (filtered.length === 0) continue;
+
 			const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 			const regex = new RegExp(`\\b${escapedTag}\\b`, 'i');
 
 			if (regex.test(normalizedText)) {
-				matches.push({ tag, notes });
+				matches.push({ tag, notes: filtered });
 			}
 		}
 

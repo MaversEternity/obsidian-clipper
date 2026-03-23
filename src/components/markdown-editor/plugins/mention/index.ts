@@ -3,7 +3,7 @@ import type { Transformer } from '@lexical/markdown';
 import { $getSelection, $isRangeSelection, $createTextNode } from 'lexical';
 import type { EditorPlugin, ToolbarButtonDef } from '../../plugin-interface';
 import { WikilinkNode, $createWikilinkNode } from '../../nodes/WikilinkNode';
-import { fetchVaultNotes } from '../../../../utils/obsidian-rest-api';
+import { getObsidianApi } from '../../../../di/container';
 
 // Import wikilink transformer from transformers
 import { WIKILINK_TRANSFORMER } from '../../transformers';
@@ -93,7 +93,7 @@ export class EditorPluginMention extends HTMLElement implements EditorPlugin {
 
 	private async openSuggest(query: string) {
 		if (this.notes.length === 0) {
-			const result = await fetchVaultNotes();
+			const result = await getObsidianApi().listNotes();
 			if (result.error || result.notes.length === 0) {
 				this.closeSuggest();
 				return;

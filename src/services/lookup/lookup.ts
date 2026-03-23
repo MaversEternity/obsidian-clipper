@@ -13,7 +13,7 @@ let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let rootEl: HTMLElement | null = null;
 let isMarking = false;
 
-const markedElements = new WeakSet<HTMLElement>();
+let markedElements = new WeakSet<HTMLElement>();
 const SCROLL_DEBOUNCE_MS = 200;
 
 const MATCH_STYLE = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
@@ -121,12 +121,16 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 		}
 
 		unmark();
+		markedElements = new WeakSet();
 		cachedOnClick = onClick;
 		rootEl = root;
 		scrollContainer = container || window;
 
+		const svc = getService();
+		console.log('[lookup] service instance:', (svc as any).__id || ((svc as any).__id = Math.random()));
 		const pageText = root.innerText || root.textContent || '';
-		cachedMatches = await getService().match(pageText);
+		cachedMatches = await svc.match(pageText);
+		console.log('[lookup] matches:', cachedMatches.length, cachedMatches.map(m => m.tag));
 		if (!cachedMatches.length) return;
 
 		markVisible();
@@ -176,4 +180,13 @@ export function unmark(): void {
 	cachedMatches = null;
 	scrollContainer = null;
 	rootEl = null;
+}
+
+/** Invalidate the service cache (e.g., on context switch or note save) */
+export function invalidateCache(): void {
+	const service = getService();
+	if ('invalidate' in service && typeof (service as any).invalidate === 'function') {
+		(service as any).invalidate();
+	}
+	cachedMatches = null;
 }

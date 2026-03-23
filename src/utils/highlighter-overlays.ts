@@ -17,7 +17,7 @@ import { createMarkdownContent } from 'defuddle/full';
 import { getElementByXPath, isDarkColor } from './dom-utils';
 import { TagIndexEntry } from './highlight-tag-index';
 import { showNotePopup } from './highlight-note-popup';
-import { fetchNoteContent } from './obsidian-rest-api';
+import { getObsidianApi } from '../di/container';
 import browser from './browser-polyfill';
 
 let hoverOverlay: HTMLElement | null = null;
@@ -793,7 +793,7 @@ async function openNoteInClipper(noteRef: import('./highlighter').NoteRef) {
 	const notePath = noteRef.path ? `${noteRef.path}/${noteRef.name}.md` : `${noteRef.name}.md`;
 
 	// Fetch note content via background script
-	const result = await fetchNoteContent(notePath);
+	const result = await getObsidianApi().fetchNote(notePath);
 	const noteContent = result.error ? `Error: ${result.error}` : result.content;
 
 	// Store note preview data so popup.ts can read it on init
