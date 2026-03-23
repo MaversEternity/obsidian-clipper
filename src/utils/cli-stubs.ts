@@ -14,6 +14,8 @@ export const generalSettings: Settings = {
 	openBehavior: 'popup',
 	highlighterEnabled: false,
 	lookupEnabled: false,
+	lookupBlacklistTags: [],
+	lookupBlacklistDomains: [],
 	alwaysShowHighlights: false,
 	highlightBehavior: 'no-highlights',
 	showMoreActionsButton: false,

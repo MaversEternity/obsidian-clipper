@@ -23,10 +23,17 @@ export function clearTagCache(): void {
 async function getObsidianTagMap(): Promise<Map<string, { filename: string; tags: string[] }[]>> {
 	if (cachedTagMap) return cachedTagMap;
 
-	// Get vault name from storage
+	// Get vault name and blacklist from storage
 	const data = await browser.storage.sync.get('vaults');
 	const vaults = Array.isArray(data.vaults) ? data.vaults : [];
 	cachedVaultName = vaults[0] || '';
+
+	// Load blacklisted tags
+	const settingsData = await browser.storage.sync.get('general_settings');
+	const settings: { lookupBlacklistTags?: string[]; lookupBlacklistDomains?: string[] } = settingsData.general_settings || {};
+	const blacklistTags = new Set(
+		(settings.lookupBlacklistTags || []).map((t: string) => t.toLowerCase().replace(/^#/, '').trim())
+	);
 
 	const result = await fetchAllTaggedNotes();
 	const tagMap = new Map<string, { filename: string; tags: string[] }[]>();
@@ -40,6 +47,7 @@ async function getObsidianTagMap(): Promise<Map<string, { filename: string; tags
 		for (const tag of note.tags) {
 			const normalized = tag.toLowerCase().replace(/^#/, '').trim();
 			if (normalized.length < MIN_TAG_LENGTH) continue;
+			if (blacklistTags.has(normalized)) continue;
 			if (!tagMap.has(normalized)) {
 				tagMap.set(normalized, []);
 			}

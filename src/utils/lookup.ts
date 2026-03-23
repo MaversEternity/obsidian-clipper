@@ -1,6 +1,7 @@
 import Mark from 'mark.js';
 import { getFilteredTagEntries, clearTagCache } from './cross-site-matcher';
 import { TagIndexEntry } from './highlight-tag-index';
+import browser from './browser-polyfill';
 
 export type MatchClickHandler = (entries: TagIndexEntry[], rect: DOMRect) => void;
 
@@ -15,6 +16,22 @@ let isMarking = false;
 const markedElements = new WeakSet<HTMLElement>();
 
 const SCROLL_DEBOUNCE_MS = 200;
+
+async function isDomainBlacklisted(): Promise<boolean> {
+	try {
+		const hostname = window.location.hostname;
+		if (!hostname) return false;
+		const data = await browser.storage.sync.get('general_settings');
+		const settings: { lookupBlacklistDomains?: string[] } = data.general_settings || {};
+		const blacklist: string[] = settings.lookupBlacklistDomains || [];
+		return blacklist.some(domain => {
+			const d = domain.trim().toLowerCase();
+			return hostname === d || hostname.endsWith('.' + d);
+		});
+	} catch {
+		return false;
+	}
+}
 
 // Shared shadow root styles — created once, reused
 const MATCH_STYLE = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
@@ -97,6 +114,12 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 	isMarking = true;
 
 	try {
+		// Check domain blacklist
+		if (await isDomainBlacklisted()) {
+			isMarking = false;
+			return;
+		}
+
 		unmark();
 		cachedOnClick = onClick;
 		rootEl = root;

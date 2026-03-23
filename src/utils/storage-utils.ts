@@ -13,6 +13,8 @@ export let generalSettings: Settings = {
 	openBehavior: 'popup',
 	highlighterEnabled: true,
 	lookupEnabled: true,
+	lookupBlacklistTags: [],
+	lookupBlacklistDomains: [],
 	alwaysShowHighlights: false,
 	highlightBehavior: 'highlight-inline',
 	showMoreActionsButton: false,
@@ -57,6 +59,8 @@ interface StorageData {
 		silentOpen?: boolean;
 		openBehavior?: boolean | 'popup' | 'embedded';
 		saveBehavior?: 'addToObsidian' | 'copyToClipboard' | 'saveFile';
+		lookupBlacklistTags?: string[];
+		lookupBlacklistDomains?: string[];
 	};
 	vaults?: string[];
 	highlighter_settings?: {
@@ -107,6 +111,8 @@ export async function loadSettings(): Promise<Settings> {
 		openBehavior: 'popup',
 		highlighterEnabled: true,
 		lookupEnabled: true,
+		lookupBlacklistTags: [],
+		lookupBlacklistDomains: [],
 		alwaysShowHighlights: true,
 		highlightBehavior: 'highlight-inline',
 		interpreterModel: '',
@@ -161,6 +167,8 @@ export async function loadSettings(): Promise<Settings> {
 			: (data.general_settings?.openBehavior ?? defaultSettings.openBehavior),
 		highlighterEnabled: data.highlighter_settings?.highlighterEnabled ?? defaultSettings.highlighterEnabled,
 		lookupEnabled: data.highlighter_settings?.lookupEnabled ?? defaultSettings.lookupEnabled,
+		lookupBlacklistTags: data.general_settings?.lookupBlacklistTags ?? defaultSettings.lookupBlacklistTags,
+		lookupBlacklistDomains: data.general_settings?.lookupBlacklistDomains ?? defaultSettings.lookupBlacklistDomains,
 		alwaysShowHighlights: data.highlighter_settings?.alwaysShowHighlights ?? defaultSettings.alwaysShowHighlights,
 		highlightBehavior: data.highlighter_settings?.highlightBehavior ?? defaultSettings.highlightBehavior,
 		interpreterModel: data.interpreter_settings?.interpreterModel || defaultSettings.interpreterModel,
@@ -202,6 +210,8 @@ export async function saveSettings(settings?: Partial<Settings>): Promise<void> 
 			silentOpen: generalSettings.silentOpen,
 			openBehavior: generalSettings.openBehavior,
 			saveBehavior: generalSettings.saveBehavior,
+			lookupBlacklistTags: generalSettings.lookupBlacklistTags,
+			lookupBlacklistDomains: generalSettings.lookupBlacklistDomains,
 		},
 		highlighter_settings: {
 			highlighterEnabled: generalSettings.highlighterEnabled,

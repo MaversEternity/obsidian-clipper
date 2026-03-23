@@ -69,6 +69,8 @@ export interface Settings {
 	openBehavior: 'popup' | 'embedded';
 	highlighterEnabled: boolean;
 	lookupEnabled: boolean;
+	lookupBlacklistTags: string[];
+	lookupBlacklistDomains: string[];
 	alwaysShowHighlights: boolean;
 	highlightBehavior: string;
 	interpreterModel?: string;

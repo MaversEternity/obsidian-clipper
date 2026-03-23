@@ -423,6 +423,26 @@ function initializeHighlighterSettings(): void {
 		saveSettings({ ...generalSettings, lookupEnabled: checked });
 	});
 
+	// Lookup blacklist tags
+	const blacklistTagsInput = document.getElementById('lookup-blacklist-tags') as HTMLInputElement;
+	if (blacklistTagsInput) {
+		blacklistTagsInput.value = (generalSettings.lookupBlacklistTags || []).join(', ');
+		blacklistTagsInput.addEventListener('change', () => {
+			const tags = blacklistTagsInput.value.split(',').map(t => t.trim()).filter(Boolean);
+			saveSettings({ ...generalSettings, lookupBlacklistTags: tags });
+		});
+	}
+
+	// Lookup blacklist domains
+	const blacklistDomainsInput = document.getElementById('lookup-blacklist-domains') as HTMLInputElement;
+	if (blacklistDomainsInput) {
+		blacklistDomainsInput.value = (generalSettings.lookupBlacklistDomains || []).join(', ');
+		blacklistDomainsInput.addEventListener('change', () => {
+			const domains = blacklistDomainsInput.value.split(',').map(d => d.trim()).filter(Boolean);
+			saveSettings({ ...generalSettings, lookupBlacklistDomains: domains });
+		});
+	}
+
 	initializeSettingToggle('highlighter-visibility', generalSettings.alwaysShowHighlights, (checked) => {
 		saveSettings({ ...generalSettings, alwaysShowHighlights: checked });
 	});
