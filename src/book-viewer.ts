@@ -3,6 +3,8 @@ import { PDFPageView, EventBus } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import browser from './utils/browser-polyfill';
 import * as lookup from './utils/lookup';
 import { handleCrossSiteClick, setContentPickerMode } from './utils/highlighter-overlays';
+import { ObsidianLookupService } from './utils/obsidian-lookup-service';
+import { NoteRef } from './utils/lookup-service';
 import * as highlighter from './utils/highlighter';
 import { loadSettings, generalSettings } from './utils/storage-utils';
 
@@ -174,8 +176,18 @@ async function renderAllPages() {
 	// Render visible pages, fetch tags + set up scroll-based marking
 	await renderVisiblePages();
 	await loadSettings();
+	lookup.setLookupService(new ObsidianLookupService());
 	if (generalSettings.lookupEnabled) {
-		await lookup.mark(viewer, handleCrossSiteClick, viewerContainer);
+		const handleLookupClick = (notes: NoteRef[], tag: string, rect: DOMRect) => {
+			handleCrossSiteClick(notes.map(n => ({
+				highlightId: `obsidian-${n.filename}`,
+				sourceUrl: '',
+				textContent: '',
+				tags: n.tags,
+				noteRef: { vault: n.vault, name: n.name, path: n.path },
+			})), rect);
+		};
+		await lookup.mark(viewer, handleLookupClick, viewerContainer);
 	}
 }
 

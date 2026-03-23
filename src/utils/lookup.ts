@@ -1,21 +1,26 @@
 import Mark from 'mark.js';
-import { getFilteredTagEntries, clearTagCache } from './cross-site-matcher';
-import { TagIndexEntry } from './highlight-tag-index';
+import { CachedLookupService, LookupMatch, NoteRef } from './lookup-service';
 import browser from './browser-polyfill';
 
-export type MatchClickHandler = (entries: TagIndexEntry[], rect: DOMRect) => void;
+export type MatchClickHandler = (notes: NoteRef[], tag: string, rect: DOMRect) => void;
 
-let cachedTagEntries: Map<string, TagIndexEntry[]> | null = null;
+let cachedMatches: LookupMatch[] | null = null;
 let cachedOnClick: MatchClickHandler | null = null;
 let scrollContainer: HTMLElement | Window | null = null;
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let rootEl: HTMLElement | null = null;
 let isMarking = false;
+let service: CachedLookupService | null = null;
 
-// Track which elements have been marked in current viewport cycle
 const markedElements = new WeakSet<HTMLElement>();
-
 const SCROLL_DEBOUNCE_MS = 200;
+
+const MATCH_STYLE = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
+
+/** Set the lookup service implementation */
+export function setLookupService(svc: CachedLookupService): void {
+	service = svc;
+}
 
 async function isDomainBlacklisted(): Promise<boolean> {
 	try {
@@ -33,9 +38,6 @@ async function isDomainBlacklisted(): Promise<boolean> {
 	}
 }
 
-// Shared shadow root styles — created once, reused
-const MATCH_STYLE = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
-
 function getVisibleChildren(root: HTMLElement): HTMLElement[] {
 	const containerRect = scrollContainer instanceof Window
 		? { top: 0, bottom: window.innerHeight }
@@ -51,14 +53,13 @@ function getVisibleChildren(root: HTMLElement): HTMLElement[] {
 	return visible;
 }
 
-function markElement(el: HTMLElement, tagEntries: Map<string, TagIndexEntry[]>, onClick: MatchClickHandler): void {
-	// Skip if already marked in this cycle
+function markElement(el: HTMLElement, matches: LookupMatch[], onClick: MatchClickHandler): void {
 	if (markedElements.has(el)) return;
 	markedElements.add(el);
 
 	const instance = new Mark(el);
-	for (const [tag, entries] of tagEntries) {
-		instance.mark(tag, {
+	for (const match of matches) {
+		instance.mark(match.tag, {
 			element: 'note-match',
 			className: '',
 			separateWordSearch: false,
@@ -82,7 +83,6 @@ function markElement(el: HTMLElement, tagEntries: Map<string, TagIndexEntry[]>, 
 				return true;
 			},
 			each: (element: HTMLElement) => {
-				// Reuse existing shadow root if present
 				if (!element.shadowRoot) {
 					const shadow = element.attachShadow({ mode: 'open' });
 					shadow.innerHTML = MATCH_STYLE;
@@ -94,7 +94,7 @@ function markElement(el: HTMLElement, tagEntries: Map<string, TagIndexEntry[]>, 
 				element.addEventListener('click', (e) => {
 					e.stopPropagation();
 					e.preventDefault();
-					onClick(entries, element.getBoundingClientRect());
+					onClick(match.notes, match.tag, element.getBoundingClientRect());
 				});
 			},
 		});
@@ -107,14 +107,13 @@ function onScroll() {
 }
 
 /**
- * Initialize lookup: fetch tags, mark visible content, and set up scroll listener.
+ * Initialize lookup: match page text via service, highlight visible matches.
  */
 export async function mark(root: HTMLElement, onClick: MatchClickHandler, container?: HTMLElement): Promise<void> {
-	if (isMarking) return;
+	if (isMarking || !service) return;
 	isMarking = true;
 
 	try {
-		// Check domain blacklist
 		if (await isDomainBlacklisted()) {
 			isMarking = false;
 			return;
@@ -125,13 +124,14 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 		rootEl = root;
 		scrollContainer = container || window;
 
-		cachedTagEntries = await getFilteredTagEntries();
-		if (cachedTagEntries.size === 0) return;
+		const pageText = root.innerText || root.textContent || '';
+		cachedMatches = await service.match(pageText);
+		if (!cachedMatches.length) return;
 
 		markVisible();
 		scrollContainer.addEventListener('scroll', onScroll, { passive: true });
 	} catch (e) {
-		console.warn('Cross-site highlight matching failed:', e);
+		console.warn('Lookup matching failed:', e);
 	} finally {
 		isMarking = false;
 	}
@@ -139,26 +139,24 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 
 /** Mark only children of root that are currently in the viewport */
 export function markVisible(): void {
-	if (!cachedTagEntries || cachedTagEntries.size === 0 || !cachedOnClick || !rootEl) return;
+	if (!cachedMatches || cachedMatches.length === 0 || !cachedOnClick || !rootEl) return;
 
 	const visible = getVisibleChildren(rootEl);
 	for (const el of visible) {
-		markElement(el, cachedTagEntries, cachedOnClick);
+		markElement(el, cachedMatches, cachedOnClick);
 	}
 }
 
 /**
- * Re-fetch tags from Obsidian and re-mark visible content.
- * Call after adding/deleting notes.
+ * Re-fetch and re-mark. Call after adding/deleting notes.
  */
 export async function refresh(): Promise<void> {
-	if (!rootEl || !cachedOnClick) return;
+	if (!rootEl || !cachedOnClick || !service) return;
 	const root = rootEl;
 	const onClick = cachedOnClick;
 	const container = scrollContainer instanceof Window ? undefined : scrollContainer as HTMLElement;
 
-	// Clear the tag cache so fresh data is fetched
-	clearTagCache();
+	service.invalidate();
 	await mark(root, onClick, container);
 }
 
@@ -174,10 +172,7 @@ export function unmark(): void {
 	if (rootEl) {
 		new Mark(rootEl).unmark();
 	}
-	cachedTagEntries = null;
+	cachedMatches = null;
 	scrollContainer = null;
 	rootEl = null;
-
-	// WeakSet entries are GC'd automatically when elements are removed from DOM
-	// No manual cleanup needed
 }

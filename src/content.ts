@@ -8,6 +8,8 @@ import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { removeCrossSiteOverlays, setContentPickerMode, handleCrossSiteClick } from './utils/highlighter-overlays';
 import * as lookup from './utils/lookup';
+import { ObsidianLookupService } from './utils/obsidian-lookup-service';
+import { NoteRef } from './utils/lookup-service';
 
 declare global {
 	interface Window {
@@ -480,10 +482,23 @@ declare global {
 		await refreshCrossSiteMatches();
 	}
 
+	// Initialize lookup service
+	lookup.setLookupService(new ObsidianLookupService());
+
+	function handleLookupClick(notes: NoteRef[], tag: string, rect: DOMRect) {
+		handleCrossSiteClick(notes.map(n => ({
+			highlightId: `obsidian-${n.filename}`,
+			sourceUrl: '',
+			textContent: '',
+			tags: n.tags,
+			noteRef: { vault: n.vault, name: n.name, path: n.path },
+		})), rect);
+	}
+
 	async function refreshCrossSiteMatches() {
 		removeCrossSiteOverlays();
 		if (generalSettings.lookupEnabled) {
-			await lookup.mark(document.body, handleCrossSiteClick);
+			await lookup.mark(document.body, handleLookupClick);
 		}
 	}
 
