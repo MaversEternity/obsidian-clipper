@@ -7,9 +7,9 @@ import { extractContentBySelector as extractContentBySelectorShared } from './ut
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { removeCrossSiteOverlays, setContentPickerMode, handleCrossSiteClick } from './utils/highlighter-overlays';
-import * as lookup from './utils/lookup';
-import { ObsidianLookupService } from './utils/obsidian-lookup-service';
-import { NoteRef } from './utils/lookup-service';
+import './di/container'; // bootstrap DI
+import * as lookup from './services/lookup/lookup';
+import { NoteRef } from './api/lookup-client';
 
 declare global {
 	interface Window {
@@ -481,9 +481,6 @@ declare global {
 		updateHasHighlights();
 		await refreshCrossSiteMatches();
 	}
-
-	// Initialize lookup service
-	lookup.setLookupService(new ObsidianLookupService());
 
 	function handleLookupClick(notes: NoteRef[], tag: string, rect: DOMRect) {
 		handleCrossSiteClick(notes.map(n => ({

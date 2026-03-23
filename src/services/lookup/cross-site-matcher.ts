@@ -1,6 +1,6 @@
-import { fetchAllTaggedNotes } from './obsidian-rest-api';
-import { TagIndexEntry } from './highlight-tag-index';
-import browser from './browser-polyfill';
+import { fetchAllTaggedNotes } from '../../utils/obsidian-rest-api';
+import { TagIndexEntry } from '../../utils/highlight-tag-index';
+import browser from '../../utils/browser-polyfill';
 
 export interface CrossSiteMatch {
 	entries: TagIndexEntry[];

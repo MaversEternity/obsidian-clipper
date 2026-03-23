@@ -1,33 +1,10 @@
-/**
- * LookupService facade — abstracts note matching from the backend.
- * Current impl: ObsidianLookupService (REST API + client-side matching)
- * Future impl: RemoteLookupService (custom server with DB-side matching)
- */
-
-export interface NoteRef {
-	filename: string;
-	vault: string;
-	name: string;
-	path: string;
-	tags: string[];
-}
-
-export interface LookupMatch {
-	tag: string;
-	notes: NoteRef[];
-}
-
-export interface LookupService {
-	/** Given page text, return notes whose tags appear in it */
-	match(text: string): Promise<LookupMatch[]>;
-}
+import { LookupClient, LookupMatch, NoteRef } from './lookup-client';
 
 /**
- * LookupService with client-side caching.
+ * CachedLookupClient — adds caching + client-side regex matching.
  * Subclasses implement fetchData() to load backend data.
- * invalidate() clears the cache, forcing next match() to re-fetch.
  */
-export abstract class CachedLookupService implements LookupService {
+export abstract class CachedLookupClient implements LookupClient {
 	private cache: Map<string, NoteRef[]> | null = null;
 
 	async match(text: string): Promise<LookupMatch[]> {

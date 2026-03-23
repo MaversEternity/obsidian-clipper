@@ -1,6 +1,8 @@
 import Mark from 'mark.js';
-import { CachedLookupService, LookupMatch, NoteRef } from './lookup-service';
-import browser from './browser-polyfill';
+import { container } from 'tsyringe';
+import { LookupClient, LookupMatch, NoteRef } from '../../api/lookup-client';
+import { TOKENS } from '../../di/tokens';
+import browser from '../../utils/browser-polyfill';
 
 export type MatchClickHandler = (notes: NoteRef[], tag: string, rect: DOMRect) => void;
 
@@ -10,16 +12,15 @@ let scrollContainer: HTMLElement | Window | null = null;
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let rootEl: HTMLElement | null = null;
 let isMarking = false;
-let service: CachedLookupService | null = null;
 
 const markedElements = new WeakSet<HTMLElement>();
 const SCROLL_DEBOUNCE_MS = 200;
 
 const MATCH_STYLE = '<style>:host{background:rgba(100,180,255,.2);border-bottom:2px solid rgba(100,180,255,.7);border-radius:2px;cursor:pointer;padding:1px 0}</style><slot></slot>';
 
-/** Set the lookup service implementation */
-export function setLookupService(svc: CachedLookupService): void {
-	service = svc;
+/** Resolve LookupClient from DI container */
+function getService(): LookupClient {
+	return container.resolve(TOKENS.LookupClient);
 }
 
 async function isDomainBlacklisted(): Promise<boolean> {
@@ -110,7 +111,7 @@ function onScroll() {
  * Initialize lookup: match page text via service, highlight visible matches.
  */
 export async function mark(root: HTMLElement, onClick: MatchClickHandler, container?: HTMLElement): Promise<void> {
-	if (isMarking || !service) return;
+	if (isMarking) return;
 	isMarking = true;
 
 	try {
@@ -125,7 +126,7 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 		scrollContainer = container || window;
 
 		const pageText = root.innerText || root.textContent || '';
-		cachedMatches = await service.match(pageText);
+		cachedMatches = await getService().match(pageText);
 		if (!cachedMatches.length) return;
 
 		markVisible();
@@ -151,13 +152,13 @@ export function markVisible(): void {
  * Re-fetch and re-mark. Call after adding/deleting notes.
  */
 export async function refresh(): Promise<void> {
-	if (!rootEl || !cachedOnClick || !service) return;
+	if (!rootEl || !cachedOnClick) return;
 	const root = rootEl;
 	const onClick = cachedOnClick;
-	const container = scrollContainer instanceof Window ? undefined : scrollContainer as HTMLElement;
-
-	service.invalidate();
-	await mark(root, onClick, container);
+	const svcContainer = scrollContainer instanceof Window ? undefined : scrollContainer as HTMLElement;
+	const svc = getService();
+	if ('invalidate' in svc) (svc as any).invalidate();
+	await mark(root, onClick, svcContainer);
 }
 
 /** Remove all marks from root */

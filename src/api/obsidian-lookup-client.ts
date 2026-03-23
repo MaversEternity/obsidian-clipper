@@ -1,13 +1,16 @@
-import { CachedLookupService, NoteRef } from './lookup-service';
-import { fetchAllTaggedNotes } from './obsidian-rest-api';
-import browser from './browser-polyfill';
+import { injectable } from 'tsyringe';
+import { CachedLookupClient } from './cached-lookup-client';
+import { NoteRef } from './lookup-client';
+import { fetchAllTaggedNotes } from '../utils/obsidian-rest-api';
+import browser from '../utils/browser-polyfill';
 
 const MIN_TAG_LENGTH = 2;
 
 /**
- * ObsidianLookupService — fetches tags via Obsidian REST API, matches client-side.
+ * ObsidianLookupClient — fetches tags via Obsidian REST API, matches client-side.
  */
-export class ObsidianLookupService extends CachedLookupService {
+@injectable()
+export class ObsidianLookupClient extends CachedLookupClient {
 	private vaultName: string = '';
 
 	protected async fetchData(): Promise<Map<string, NoteRef[]>> {
