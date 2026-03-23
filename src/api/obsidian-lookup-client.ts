@@ -3,7 +3,7 @@ import { CachedLookupClient } from './cached-lookup-client';
 import { NoteRef } from './lookup-client';
 import { ObsidianApiClient } from './obsidian-api-client';
 import { TOKENS } from '../di/tokens';
-import browser from '../utils/browser-polyfill';
+import { syncGet } from './typed-storage';
 
 const MIN_TAG_LENGTH = 2;
 
@@ -20,15 +20,13 @@ export class ObsidianLookupClient extends CachedLookupClient {
 
 	protected async fetchData(): Promise<Map<string, NoteRef[]>> {
 		// Load vault name
-		const data = await browser.storage.sync.get('vaults');
-		const vaults = Array.isArray(data.vaults) ? data.vaults : [];
-		this.vaultName = vaults[0] || '';
+		const vaults = await syncGet('vaults');
+		this.vaultName = (vaults || [])[0] || '';
 
 		// Load blacklist
-		const settingsData = await browser.storage.sync.get('general_settings');
-		const settings: { lookupBlacklistTags?: string[] } = settingsData.general_settings || {};
+		const settings = await syncGet('general_settings');
 		const blacklistTags = new Set(
-			(settings.lookupBlacklistTags || []).map((t: string) => t.toLowerCase().replace(/^#/, '').trim())
+			(settings?.lookupBlacklistTags || []).map((t: string) => t.toLowerCase().replace(/^#/, '').trim())
 		);
 
 		// Fetch all tagged notes (no context filter — applied at query time)

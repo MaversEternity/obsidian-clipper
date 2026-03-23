@@ -2,7 +2,7 @@ import Mark from 'mark.js';
 import { container } from 'tsyringe';
 import { LookupClient, LookupMatch, NoteRef } from '../../api/lookup-client';
 import { TOKENS } from '../../di/tokens';
-import browser from '../../utils/browser-polyfill';
+import { syncGet } from '../../api/typed-storage';
 
 export type MatchClickHandler = (notes: NoteRef[], tag: string, rect: DOMRect) => void;
 
@@ -27,9 +27,8 @@ async function isDomainBlacklisted(): Promise<boolean> {
 	try {
 		const hostname = window.location.hostname;
 		if (!hostname) return false;
-		const data = await browser.storage.sync.get('general_settings');
-		const settings: { lookupBlacklistDomains?: string[] } = data.general_settings || {};
-		const blacklist: string[] = settings.lookupBlacklistDomains || [];
+		const settings = await syncGet('general_settings');
+		const blacklist = settings?.lookupBlacklistDomains || [];
 		return blacklist.some(domain => {
 			const d = domain.trim().toLowerCase();
 			return hostname === d || hostname.endsWith('.' + d);
@@ -126,11 +125,8 @@ export async function mark(root: HTMLElement, onClick: MatchClickHandler, contai
 		rootEl = root;
 		scrollContainer = container || window;
 
-		const svc = getService();
-		console.log('[lookup] service instance:', (svc as any).__id || ((svc as any).__id = Math.random()));
 		const pageText = root.innerText || root.textContent || '';
-		cachedMatches = await svc.match(pageText);
-		console.log('[lookup] matches:', cachedMatches.length, cachedMatches.map(m => m.tag));
+		cachedMatches = await getService().match(pageText);
 		if (!cachedMatches.length) return;
 
 		markVisible();

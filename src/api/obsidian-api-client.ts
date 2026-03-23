@@ -1,7 +1,7 @@
 import { injectable, inject } from 'tsyringe';
 import { Transport } from './transport';
 import { TOKENS } from '../di/tokens';
-import browser from '../utils/browser-polyfill';
+import { syncGet, syncSet } from './typed-storage';
 
 export interface ObsidianRESTConfig {
 	host: string;
@@ -19,16 +19,15 @@ export class ObsidianApiClient {
 	constructor(@inject(TOKENS.Transport) private transport: Transport) {}
 
 	async getConfig(): Promise<ObsidianRESTConfig> {
-		const result = await browser.storage.sync.get('obsidian_rest_api');
-		const config = (result.obsidian_rest_api || {}) as Record<string, string>;
+		const config = await syncGet('obsidian_rest_api');
 		return {
-			host: config.host || DEFAULT_HOST,
-			apiKey: config.apiKey || '',
+			host: config?.host || DEFAULT_HOST,
+			apiKey: config?.apiKey || '',
 		};
 	}
 
 	async saveConfig(config: ObsidianRESTConfig): Promise<void> {
-		await browser.storage.sync.set({ obsidian_rest_api: config });
+		await syncSet('obsidian_rest_api', config);
 	}
 
 	async fetchNote(notePath: string): Promise<{ content: string; error?: string }> {

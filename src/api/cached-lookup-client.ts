@@ -1,5 +1,5 @@
 import { LookupClient, LookupMatch, NoteRef } from './lookup-client';
-import browser from '../utils/browser-polyfill';
+import { localGet } from './typed-storage';
 
 /**
  * CachedLookupClient — adds caching + client-side regex matching.
@@ -13,8 +13,7 @@ export abstract class CachedLookupClient implements LookupClient {
 		if (tagMap.size === 0) return [];
 
 		// Load active context — filter at query time, not cache time
-		const contextData = await browser.storage.local.get('activeContext');
-		const activeContext = (contextData.activeContext as string) || '';
+		const activeContext = (await localGet('activeContext')) || '';
 
 		const normalizedText = text.replace(/\s+/g, ' ').trim().toLowerCase();
 		const matches: LookupMatch[] = [];
